@@ -1,81 +1,213 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>Viewer — Live</title>
-  <script src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/external_api.js"></script>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    html,body{height:100%;margin:0;background:#000;color:#fff;font-family:Arial}
-    #video-wrap{height:calc(100vh - 56px);position:relative;display:flex;align-items:center;justify-content:center;background:#000}
-    #jaas{width:100%;height:100%;}
-    #placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#bbb;z-index:2;background:rgba(0,0,0,0.45)}
-    #controls{height:56px;display:flex;align-items:center;justify-content:center;background:#111}
-    button{padding:10px 14px;border-radius:6px;background:#333;color:#fff;border:0;cursor:pointer}
-  </style>
+<meta charset="utf-8"/>
+<title>Viewer — DEBUG</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<!-- JaaS external_api.js (your magic cookie already included) -->
+<script src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/external_api.js"></script>
+<style>
+  body{margin:0;font-family:system-ui,Arial;background:#071019;color:#e6f0f3}
+  #main {display:flex; height:100vh;}
+  #left {flex:1; display:flex; flex-direction:column; background:#000}
+  #jaas {flex:1; min-height:200px; background:#000}
+  #controls {height:56px; display:flex; gap:8px; align-items:center; padding:8px; background:#0d1520}
+  button{padding:8px 12px;border-radius:6px;border:0;background:#1b2835;color:#fff;cursor:pointer}
+  #debug {width:420px;background:#071018;border-left:1px solid #0f2533;overflow:auto;padding:8px;box-sizing:border-box}
+  #log {height:45vh; overflow:auto; background:#021018; color:#bfe7ff; padding:8px; border-radius:6px; font-size:12px}
+  #participants {height:45vh; overflow:auto; background:#021018; color:#d0f0e8; padding:8px; border-radius:6px; margin-top:8px; font-size:12px}
+  label{display:block;margin:6px 0;font-size:13px}
+  input[type=text]{width:100%;padding:6px;border-radius:6px;border:1px solid #0f2430;background:#021018;color:#fff}
+  .small{font-size:12px;color:#9fbac4}
+  .warn{color:#ffb3a7}
+  pre{white-space:pre-wrap;word-wrap:break-word}
+</style>
 </head>
 <body>
-  <div id="video-wrap">
-    <div id="placeholder">Waiting for host to start sharing…</div>
-    <div id="jaas"></div>
+<div id="main">
+  <div id="left">
+    <div id="jaas" aria-label="meeting"></div>
+    <div id="controls">
+      <button id="btnReinitShow">Re-init (show UI)</button>
+      <button id="btnReinitHide">Re-init (hide UI)</button>
+      <button id="btnRefresh">Refresh participants</button>
+      <button id="btnPinFirst">Pin first remote</button>
+      <button id="btnDump">Dump participants to console</button>
+      <div style="margin-left:auto" class="small">Debug viewer</div>
+    </div>
   </div>
-  <div id="controls"><button id="fs">Fullscreen</button></div>
+
+  <div id="debug">
+    <label>Config / Room</label>
+    <input id="roomInput" type="text" value="vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/AyushLive"/>
+    <label>Viewer JWT (leave blank to use no token)</label>
+    <input id="jwtInput" type="text" value="eyJraWQiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkvNjM4ODg2LVNBTVBMRV9BUFAiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJqaXRzaSIsImlzcyI6ImNoYXQiLCJpYXQiOjE3NTkwNjQ2NzUsImV4cCI6MTc1OTA3MTg3NSwibmJmIjoxNzU5MDY0NjcwLCJzdWIiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkiLCJjb250ZXh0Ijp7ImZlYXR1cmVzIjp7ImxpdmVzdHJlYW1pbmciOnRydWUsImZpbGUtdXBsb2FkIjp0cnVlLCJvdXRib3VuZC1jYWxsIjp0cnVlLCJzaXAtb3V0Ym91bmQtY2FsbCI6ZmFsc2UsInRyYW5zY3JpcHRpb24iOnRydWUsImxpc3QtdmlzaXRvcnMiOmZhbHNlLCJyZWNvcmRpbmciOnRydWUsImZsaXAiOmZhbHNlfSwidXNlciI6eyJoaWRkZW4tZnJvbS1yZWNvcmRlciI6ZmFsc2UsIm1vZGVyYXRvciI6ZmFsc2UsIm5hbWUiOiJWaWV3ZXIiLCJpZCI6Imdvb2dsZS1vYXV0aDJ8MTAzOTkzNzcwNTg5NDYyNTY0ODk3IiwiYXZhdGFyIjoiIiwiZW1haWwiOiIifX0sInJvb20iOiIqIn0.iUKS1JqLCSyj-d2ROggfwJVoDr4s3umcGApPgcZLDktbiUxHl6J2Qqg2PR3SrUZmCg9IkICBNXG-a4fDY1JB3Z17vkxFmTndKZCcjKoVF1aayLP0y7WRywQXw2kr6Zvr8djktphpchiOcKzH_Ctyjw7t0S9w59wAbFt6Hbvw0jevZTuIHlTI7U0Vb6FXllaIGY3AMPeQsd0Pl3-s-e4VhxrA1icdSqUsrsobt3JY3d1tnvUZNuZ9m0J9SrV-wBcOzep51aOGfzR8fVS2FUdMgH0_ZTi9-am626GqkHnT42naTXQO4OO3pUwExFvgIYzOsZSITmhtzSIt89gZjBIBnw"/>
+    <label class="small">Event log (newest at bottom)</label>
+    <div id="log"></div>
+
+    <label class="small">Participants (updated live)</label>
+    <div id="participants"><pre id="partsJson">—</pre></div>
+
+    <div style="height:12px"></div>
+    <div class="small warn">Steps: 1) Open host (use host.html or JaaS console) and share screen.  
+    2) Click "Re-init (show UI)". 3) Watch events & participants. If no host appears, host didn't publish or token/room mismatch.</div>
+  </div>
+</div>
 
 <script>
-(async ()=>{
-  const ROOM = "vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/AyushLive";
-  const VIEWER_JWT = "eyJraWQiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkvNjM4ODg2LVNBTVBMRV9BUFAiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJqaXRzaSIsImlzcyI6ImNoYXQiLCJpYXQiOjE3NTkwNjQ2NzUsImV4cCI6MTc1OTA3MTg3NSwibmJmIjoxNzU5MDY0NjcwLCJzdWIiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkiLCJjb250ZXh0Ijp7ImZlYXR1cmVzIjp7ImxpdmVzdHJlYW1pbmciOnRydWUsImZpbGUtdXBsb2FkIjp0cnVlLCJvdXRib3VuZC1jYWxsIjp0cnVlLCJzaXAtb3V0Ym91bmQtY2FsbCI6ZmFsc2UsInRyYW5zY3JpcHRpb24iOnRydWUsImxpc3QtdmlzaXRvcnMiOmZhbHNlLCJyZWNvcmRpbmciOnRydWUsImZsaXAiOmZhbHNlfSwidXNlciI6eyJoaWRkZW4tZnJvbS1yZWNvcmRlciI6ZmFsc2UsIm1vZGVyYXRvciI6ZmFsc2UsIm5hbWUiOiJWaWV3ZXIiLCJpZCI6Imdvb2dsZS1vYXV0aDJ8MTAzOTkzNzcwNTg5NDYyNTY0ODk3IiwiYXZhdGFyIjoiIiwiZW1haWwiOiIifX0sInJvb20iOiIqIn0.iUKS1JqLCSyj-d2ROggfwJVoDr4s3umcGApPgcZLDktbiUxHl6J2Qqg2PR3SrUZmCg9IkICBNXG-a4fDY1JB3Z17vkxFmTndKZCcjKoVF1aayLP0y7WRywQXw2kr6Zvr8djktphpchiOcKzH_Ctyjw7t0S9w59wAbFt6Hbvw0jevZTuIHlTI7U0Vb6FXllaIGY3AMPeQsd0Pl3-s-e4VhxrA1icdSqUsrsobt3JY3d1tnvUZNuZ9m0J9SrV-wBcOzep51aOGfzR8fVS2FUdMgH0_ZTi9-am626GqkHnT42naTXQO4OO3pUwExFvgIYzOsZSITmhtzSIt89gZjBIBnw";
+(function(){
+  const logEl = document.getElementById('log');
+  const partsEl = document.getElementById('partsJson');
+  const roomInput = document.getElementById('roomInput');
+  const jwtInput = document.getElementById('jwtInput');
 
-  const api = new JitsiMeetExternalAPI("8x8.vc", {
-    roomName: ROOM,
-    parentNode: document.getElementById('jaas'),
-    jwt: VIEWER_JWT,
-    userInfo: { displayName: 'Viewer_' + Math.floor(Math.random()*1000) },
-    configOverwrite: {
-      prejoinPageEnabled: false,
-      startWithAudioMuted: true,
-      startWithVideoMuted: true,
-      disableDeepLinking: true
-    },
-    interfaceConfigOverwrite: {
-      TOOLBAR_BUTTONS: [], // hide controls for viewers
-      SHOW_JITSI_WATERMARK: false
-    },
-    width: '100%', height: '100%'
-  });
+  let api = null;
+  let joined = false;
+  let latestParticipants = null;
 
-  api.addEventListener('videoConferenceJoined', () => {
-    console.log('Viewer joined.');
-  });
+  function appendLog(txt){
+    const time = new Date().toLocaleTimeString();
+    logEl.innerText += `[${time}] ${txt}\n`;
+    logEl.scrollTop = logEl.scrollHeight;
+    console.log(txt);
+  }
 
-  // try to pin any remote who is sharing or has video
-  api.addEventListener('participantJoined', async () => {
+  function renderParticipants(list){
+    latestParticipants = list;
+    try {
+      partsEl.innerText = JSON.stringify(list, null, 2);
+    } catch(e){ partsEl.innerText = String(list); }
+  }
+
+  async function getParticipants(){
+    if (!api) return;
     try {
       const info = api.getParticipantsInfo && api.getParticipantsInfo();
       const list = (info && typeof info.then === 'function') ? await info : info;
-      if (Array.isArray(list)) {
-        for (const p of list) {
-          const pid = p.participantId || p.id || p.participant;
-          if (!pid || pid === api.getCurrentUserID()) continue;
-          const features = p.features || {};
-          const isSharing = p.isScreensharing || p.isSharingScreen || features.screenSharing;
-          if (isSharing || p.hasVideo || p.videoStatus) {
-            try { api.executeCommand('pinParticipant', pid); api.executeCommand('setTileView', false); } catch(e){}
-            document.getElementById('placeholder').style.display = 'none';
-            break;
+      renderParticipants(list || []);
+      appendLog('getParticipantsInfo -> ' + (Array.isArray(list) ? list.length+' participants' : String(list)));
+      return list;
+    } catch(e){
+      appendLog('getParticipantsInfo error: ' + e);
+      console.warn(e);
+      return null;
+    }
+  }
+
+  function attachCommonHandlers(apiInstance){
+    if(!apiInstance) return;
+    const events = [
+      'videoConferenceJoined','videoConferenceLeft','participantJoined','participantLeft',
+      'participantKickedOut','participantRoleChanged','participantVideoStatusChanged',
+      'screenSharingStatusChanged','videoMuteStatusChanged','audioMuteStatusChanged',
+      'readyToClose','errorOccurred'
+    ];
+    events.forEach(ev => {
+      try {
+        apiInstance.addEventListener(ev, (payload) => {
+          appendLog(ev + ' : ' + (payload && typeof payload === 'object' ? JSON.stringify(payload) : String(payload)));
+          // refresh participants on relevant events
+          if (['participantJoined','participantLeft','participantVideoStatusChanged','screenSharingStatusChanged','participantRoleChanged'].includes(ev)) {
+            setTimeout(getParticipants, 300);
           }
-        }
+        });
+      } catch(e){ console.warn('attach ev fail', ev, e); }
+    });
+  }
+
+  async function initJitsi(showUI=true){
+    // destroy existing if present
+    try {
+      if (api && api.dispose) {
+        try { api.dispose(); } catch(e){ console.warn('dispose', e); }
       }
     } catch(e){ console.warn(e); }
+    document.getElementById('jaas').innerHTML = ''; // wipe
+
+    const ROOM = roomInput.value.trim();
+    const JWT = (jwtInput.value||'').trim();
+    appendLog('Initializing Jitsi — ROOM=' + ROOM + ' — JWT present=' + (!!JWT) + ' — showUI=' + showUI);
+
+    const options = {
+      roomName: ROOM,
+      parentNode: document.getElementById('jaas'),
+      userInfo: { displayName: 'Viewer-Debug-' + Math.floor(Math.random()*999) },
+      configOverwrite: {
+        prejoinPageEnabled: false,
+        startWithAudioMuted: true,
+        startWithVideoMuted: true,
+        disableDeepLinking: true
+      },
+      interfaceConfigOverwrite: {
+        TOOLBAR_BUTTONS: showUI ? undefined : [], // undefined = show standard toolbar, [] = hide
+        SHOW_JITSI_WATERMARK: showUI,
+        SHOW_BRAND_WATERMARK: showUI,
+        SHOW_POWERED_BY: showUI
+      },
+      width: '100%', height: '100%'
+    };
+    if (JWT) options.jwt = JWT;
+
+    try {
+      api = new JitsiMeetExternalAPI("8x8.vc", options);
+      window.__debugApi = api;
+      appendLog('External API created OK');
+      attachCommonHandlers(api);
+      // try to get participants periodically
+      api.addEventListener('videoConferenceJoined', () => {
+        joined = true;
+        appendLog('videoConferenceJoined: joined=true');
+        getParticipants();
+      });
+      api.addEventListener('videoConferenceLeft', () => {
+        joined = false;
+        appendLog('videoConferenceLeft');
+      });
+      // initial fetch after small delay
+      setTimeout(getParticipants, 900);
+      // periodic refresh to see state
+      setInterval(()=>{ if(api) getParticipants(); }, 2500);
+    } catch (err){
+      appendLog('ERROR creating ExternalAPI: ' + err);
+      console.error(err);
+      api = null;
+    }
+  }
+
+  // buttons
+  document.getElementById('btnReinitShow').addEventListener('click', ()=> initJitsi(true));
+  document.getElementById('btnReinitHide').addEventListener('click', ()=> initJitsi(false));
+  document.getElementById('btnRefresh').addEventListener('click', ()=> getParticipants());
+  document.getElementById('btnPinFirst').addEventListener('click', async ()=>{
+    if(!api){ appendLog('no api'); return; }
+    const list = await getParticipants() || [];
+    for(const p of list){
+      const pid = p.participantId || p.id || p.participant;
+      if(pid && pid !== api.getCurrentUserID()){
+        try { api.executeCommand('setTileView', false); api.executeCommand('pinParticipant', pid); appendLog('Pinned: ' + pid); return; } catch(e){ appendLog('pin failed: '+e); }
+      }
+    }
+    appendLog('No remote participant to pin.');
   });
 
-  document.getElementById('fs').addEventListener('click', async () => {
-    const el = document.getElementById('video-wrap');
-    if (el.requestFullscreen) await el.requestFullscreen();
-    else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+  document.getElementById('btnDump').addEventListener('click', async ()=>{
+    if(!api) { appendLog('no api'); return; }
+    try {
+      const info = api.getParticipantsInfo && api.getParticipantsInfo();
+      const list = (info && typeof info.then === 'function') ? await info : info;
+      console.log('dump participants', list);
+      appendLog('Dumped participants to console.');
+    } catch(e){ appendLog('dump failed '+e); }
   });
 
-  window.__viewerApi = api;
+  // initialize with visible UI by default
+  initJitsi(true);
+
+  // expose helpers on window for quick console checks
+  window.__viewerDebug = {
+    getParticipants, initJitsi, apiRef: ()=> api
+  };
+
 })();
 </script>
 </body>
