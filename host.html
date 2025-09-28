@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Host — Start Share</title>
+  <script src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/external_api.js"></script>
+  <style>html,body,#jaas{height:100%;margin:0}</style>
+</head>
+<body>
+  <div id="jaas"></div>
+
+<script>
+(async ()=>{
+  const ROOM = "vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/AyushLive"; // change room suffix if you want
+  const HOST_JWT = "eyJraWQiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkvNjM4ODg2LVNBTVBMRV9BUFAiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJqaXRzaSIsImlzcyI6ImNoYXQiLCJpYXQiOjE3NTkwNjQwMjMsImV4cCI6MTc1OTA3MTIyMywibmJmIjoxNzU5MDY0MDE4LCJzdWIiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkiLCJjb250ZXh0Ijp7ImZlYXR1cmVzIjp7ImxpdmVzdHJlYW1pbmciOnRydWUsImZpbGUtdXBsb2FkIjp0cnVlLCJvdXRib3VuZC1jYWxsIjp0cnVlLCJzaXAtb3V0Ym91bmQtY2FsbCI6ZmFsc2UsInRyYW5zY3JpcHRpb24iOnRydWUsImxpc3QtdmlzaXRvcnMiOmZhbHNlLCJyZWNvcmRpbmciOnRydWUsImZsaXAiOmZhbHNlfSwidXNlciI6eyJoaWRkZW4tZnJvbS1yZWNvcmRlciI6ZmFsc2UsIm1vZGVyYXRvciI6dHJ1ZSwibmFtZSI6IkF5dXNoTW9kIiwiaWQiOiJnb29nbGUtb2F1dGgyfDEwMzk5Mzc3MDU4OTQ2MjU2NDg5NyIsImF2YXRhciI6IiIsImVtYWlsIjoic2Fsb25pdGFrcmkwNkBnbWFpbC5jb20ifX0sInJvb20iOiIqIn0.RTSwt2SqgEIXfEIbaWnMhXk7ESNopIqwrxHlcEzcJN6EVWw59pxwyftEbaGocs2hvBXq1iJJnPtql_pGoqFqZo1x_MZyyu5lxLnWiGaEkd0PWcZfut9-EgeOZoejW6cX_n9mL49TPNAGFZohDMooaJF8q2Kclkwj8JcIdg5EgrI9q2QbpxyRMOc5cLK5uHbhnlykods5ibuRePeKgmSoFTXBG2nKiz8SboFwar0PuBExz2QXvH1-hyzEFlT6nuIYRdtmrqMWKp2szd80K8WTK7aAGI0TmGqadPzO9hS_OtmOAKsn77f1rHHEy2SZrS7FD7TY14jcJPr3wecONnQDVg";
+
+  const api = new JitsiMeetExternalAPI("8x8.vc", {
+    roomName: ROOM,
+    parentNode: document.getElementById('jaas'),
+    jwt: HOST_JWT,
+    configOverwrite: { prejoinPageEnabled: false, disableDeepLinking: true },
+    interfaceConfigOverwrite: { TOOLBAR_BUTTONS: undefined }
+  });
+
+  api.addEventListener('videoConferenceJoined', () => {
+    console.log('Host joined. Use the toolbar to share screen (you must accept the browser share dialog).');
+  });
+
+  window.__hostApi = api;
+})();
+</script>
+</body>
+</html>
