@@ -2,30 +2,19 @@
 <html>
 <head>
 <meta charset="utf-8"/>
-<title>Viewer — Minimal UI / Fullscreen</title>
+<title>Viewer — Black background (no blurred background)</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<!-- JaaS external_api.js (keep your magic cookie path) -->
+<!-- JaaS external_api.js -->
 <script src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/external_api.js"></script>
-
 <style>
   :root { --bg:#000; --panel:#071018; --panel-2:#0d1520; --text:#e6f0f3; --muted:#9fbac4; }
   html,body{height:100%; margin:0; font-family:system-ui,Arial,Helvetica,sans-serif; background:var(--bg); color:var(--text)}
   #main {display:flex; height:100vh; gap:0;}
-  /* left: Jitsi container */
   #left {flex:1; display:flex; flex-direction:column; background:var(--bg); min-width:0;}
+  /* IMPORTANT: #jaas is black background */
   #jaas {flex:1; min-height:200px; background:var(--bg); position:relative; overflow:hidden;}
-  /* overlay small controls */
-  .viewer-controls {
-    position:absolute; right:12px; top:12px; z-index:9999; display:flex; gap:8px;
-    align-items:center;
-  }
-  .viewer-controls button {
-    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.06);
-    padding:8px 10px; color:var(--text); border-radius:6px; cursor:pointer;
-    backdrop-filter: blur(6px);
-    font-size:13px;
-  }
-  /* right: debug */
+  .viewer-controls { position:absolute; right:12px; top:12px; z-index:9999; display:flex; gap:8px; align-items:center; }
+  .viewer-controls button { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.06); padding:8px 10px; color:var(--text); border-radius:6px; cursor:pointer; font-size:13px; }
   #debug {width:420px; background:var(--panel); border-left:1px solid #0f2533; overflow:auto; padding:10px; box-sizing:border-box;}
   #controls {height:56px; display:flex; gap:8px; align-items:center; padding:8px; background:var(--panel-2); border-radius:6px}
   button.big {padding:8px 12px;border-radius:6px;border:0;background:#1b2835;color:#fff;cursor:pointer}
@@ -36,7 +25,6 @@
   #log {height:40vh; overflow:auto; background:#021018; color:#bfe7ff; padding:8px; border-radius:6px; font-size:12px}
   #participants {height:40vh; overflow:auto; background:#021018; color:#d0f0e8; padding:8px; border-radius:6px; margin-top:8px; font-size:12px}
   pre{white-space:pre-wrap; word-wrap:break-word; margin:0;}
-  /* small responsive tweak */
   @media (max-width:900px){ #debug{display:none} }
 </style>
 </head>
@@ -44,7 +32,6 @@
 <div id="main">
   <div id="left">
     <div id="jaas" aria-label="meeting">
-      <!-- custom small overlay controls -->
       <div class="viewer-controls" id="viewerControls" style="display:none">
         <button id="btnUnhide">Show UI</button>
         <button id="btnFullscreen">Fullscreen</button>
@@ -64,7 +51,7 @@
     <label>Config / Room</label>
     <input id="roomInput" type="text" value="vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/AyushLive"/>
     <label>Viewer JWT (leave blank to use no token)</label>
-    <input id="jwtInput" type="text" value="eyJraWQiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkvNjM4ODg2LVNBTVBMRV9BUFAiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJqaXRzaSIsImlzcyI6ImNoYXQiLCJpYXQiOjE3NTkwNjQ2NzUsImV4cCI6MTc1OTA3MTg3NSwibmJmIjoxNzU5MDY0NjcwLCJzdWIiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkiLCJjb250ZXh0Ijp7ImZlYXR1cmVzIjp7ImxpdmVzdHJlYW1pbmciOnRydWUsImZpbGUtdXBsb2FkIjp0cnVlLCJvdXRib3VuZC1jYWxsIjp0cnVlLCJzaXAtb3V0Ym91bmQtY2FsbCI6ZmFsc2UsInRyYW5zY3JpcHRpb24iOnRydWUsImxpc3QtdmlzaXRvcnMiOmZhbHNlLCJyZWNvcmRpbmciOnRydWUsImZsaXAiOmZhbHNlfSwidXNlciI6eyJoaWRkZW4tZnJvbS1yZWNvcmRlciI6ZmFsc2UsIm1vZGVyYXRvciI6ZmFsc2UsIm5hbWUiOiJWaWV3ZXIiLCJpZCI6Imdvb2dsZS1vYXV0aDJ8MTAzOTkzNzcwNTg5NDYyNTY0ODk3IiwiYXZhdGFyIjoiIiwiZW1haWwiOiIifX0sInJvb20iOiIqIn0.iUKS1JqLCSyj-d2ROggfwJVoDr4s3umcGApPgcZLDktbiUxHl6J2Qqg2PR3SrUZmCg9IkICBNXG-a4fDY1JB3Z17vkxFmTndKZCcjKoVF1aayLP0y7WRywQXw2kr6Zvr8djktphpchiOcKzH_Ctyjw7t0S9w59wAbFt6Hbvw0jevZTuIHlTI7U0Vb6FXllaIGY3AMPeQsd0Pl3-s-e4VhxrA1icdSqUsrsobt3JY3d1tnvUZNuZ9m0J9SrV-wBcOzep51aOGfzR8fVS2FUdMgH0_ZTi9-am626GqkHnT42naTXQO4OO3pUwExFvgIYzOsZSITmhtzSIt89gZjBIBnw"/>
+    <input id="jwtInput" type="text" value=""/>
     <label class="small">Event log (newest at bottom)</label>
     <div id="log"></div>
 
@@ -72,8 +59,7 @@
     <div id="participants"><pre id="partsJson">—</pre></div>
 
     <div style="height:12px"></div>
-    <div class="small warn">Steps: 1) Open host (use host.html or JaaS console) and share screen.  
-    2) Click "Init Viewer". 3) Viewer will join with no toolbar and black background. Filmstrip is auto-hidden.</div>
+    <div class="small warn">Note: The code sets DISABLE_VIDEO_BACKGROUND=true to stop the blurred large-video background. If you use a hosted JAAS instance that ignores this override, see fallback steps below.</div>
   </div>
 </div>
 
@@ -86,7 +72,7 @@
 
   let api = null;
   let joined = false;
-  let lastMuteState = true; // start with audio muted
+  let lastMuteState = true;
 
   function appendLog(txt){
     const time = new Date().toLocaleTimeString();
@@ -131,39 +117,34 @@
             setTimeout(getParticipants, 300);
           }
           if (ev === 'videoConferenceJoined') {
-            // ensure filmstrip is hidden shortly after join
+            // black background & hide filmstrip
+            const jaas = document.getElementById('jaas');
+            if (jaas) jaas.style.background = '#000';
             ensureHideFilmstrip(apiInstance);
+            const vc = document.getElementById('viewerControls');
+            if (vc) vc.style.display = 'flex';
           }
         });
       } catch(e){ console.warn('attach ev fail', ev, e); }
     });
   }
 
-  // ensure filmstrip is hidden - call a few times to make it stick
+  // ensure filmstrip is hidden - call a few times
   function ensureHideFilmstrip(apiInstance){
     try {
-      // attempt a few times with delays (helps if UI isn't ready immediately)
       [0, 600, 1500].forEach((delay,i) => {
         setTimeout(()=> {
           try {
-            apiInstance.executeCommand('toggleFilmStrip'); // will hide if visible
+            apiInstance.executeCommand('toggleFilmStrip');
             appendLog('toggleFilmStrip called (attempt ' + (i+1) + ')');
           } catch(err){
             appendLog('toggleFilmStrip error: '+err);
           }
         }, delay);
       });
-      // also hide any visible toolbar by hiding the container visually (best-effort)
-      setTimeout(()=> {
-        try {
-          const parent = document.getElementById('jaas');
-          if (parent) parent.style.background = '#000'; // black background
-        } catch(e){}
-      }, 300);
     } catch(e){ console.warn(e); }
   }
 
-  // init without re-creating if already exists (keeps connection alive)
   async function initJitsi(){
     if (api) {
       appendLog('Viewer already initialized. Skipping re-create.');
@@ -182,7 +163,9 @@
         prejoinPageEnabled: false,
         startWithAudioMuted: true,
         startWithVideoMuted: true,
-        disableDeepLinking: true
+        disableDeepLinking: true,
+        // improve screenshare fps if moderator wants higher fps for videos
+        desktopSharingFrameRate: { min: 15, max: 30 }
       },
       interfaceConfigOverwrite: {
         TOOLBAR_BUTTONS: [],              // hide toolbar completely
@@ -194,7 +177,9 @@
         SHOW_WATERMARK_FOR_GUESTS: false,
         VIDEO_LAYOUT_FIT: 'both',
         filmStripOnly: false,
-        SHOW_PARTICIPANT_NAME: false
+        SHOW_PARTICIPANT_NAME: false,
+        /* === THIS is the key that disables the blurred large-video background === */
+        DISABLE_VIDEO_BACKGROUND: true
       },
       width: '100%', height: '100%'
     };
@@ -209,14 +194,16 @@
       api.addEventListener('videoConferenceJoined', () => {
         joined = true;
         appendLog('videoConferenceJoined: joined=true');
-        // black background & hide filmstrip
         const jaas = document.getElementById('jaas');
         if (jaas) jaas.style.background = '#000';
         ensureHideFilmstrip(api);
-        // show our tiny overlay controls
-        const vc = document.getElementById('viewerControls');
-        if (vc) vc.style.display = 'flex';
         setTimeout(getParticipants, 900);
+
+        // Suggest higher assumed bandwidth (optional)
+        try {
+          api.executeCommand('setAssumedBandwidthBps', { assumedBandwidthBps: 2500000 });
+          appendLog('setAssumedBandwidthBps called (2.5Mbps)');
+        } catch(e){ /* ignore */ }
       });
 
       api.addEventListener('videoConferenceLeft', () => {
@@ -226,7 +213,6 @@
         if (vc) vc.style.display = 'none';
       });
 
-      // periodic refresh to keep debug panel updated
       setInterval(()=>{ if(api) getParticipants(); }, 2500);
 
     } catch (err){
@@ -236,7 +222,6 @@
     }
   }
 
-  // fullscreen helper
   function toggleFullscreen() {
     const elem = document.getElementById('jaas');
     if (!document.fullscreenElement) {
@@ -246,24 +231,16 @@
     }
   }
 
-  // small controls
+  // controls
   document.getElementById('btnInit').addEventListener('click', ()=> initJitsi());
   document.getElementById('btnFullscreen').addEventListener('click', ()=> toggleFullscreen());
   document.getElementById('btnUnhide').addEventListener('click', ()=> {
-    // unhide - show the iframe UI temporarily (we intentionally don't re-create)
-    appendLog('Unhide request: showing Jitsi UI (note: toolbar still hidden by config).');
-    // remove our overlay (we only used overlay controls, not overlaying the iframe)
-    const vc = document.getElementById('viewerControls');
-    if (vc) vc.style.display = 'flex';
-    // we don't recreate API, so nothing else to do
+    appendLog('Unhide request: toolbar was hidden by config; Jitsi UI remains but toolbar is suppressed.');
   });
-
-  // Pin first remote participant
   document.getElementById('btnPinFirst').addEventListener('click', async ()=>{
     if(!api){ appendLog('no api'); return; }
     const list = await getParticipants() || [];
     for(const p of list){
-      // participant payload formats vary; try multiple id fields
       const pid = p.participantId || p.id || p.participant;
       if(pid && pid !== api.getCurrentUserID()){
         try { api.executeCommand('setTileView', false); api.executeCommand('pinParticipant', pid); appendLog('Pinned: ' + pid); return; } catch(e){ appendLog('pin failed: '+e); }
@@ -272,7 +249,6 @@
     appendLog('No remote participant to pin.');
   });
 
-  // Mute toggle
   document.getElementById('btnMute').addEventListener('click', ()=>{
     if(!api){ appendLog('no api'); return; }
     try {
@@ -282,7 +258,6 @@
     } catch(e){ appendLog('mute toggle error: ' + e); }
   });
 
-  // Dump participants to console
   document.getElementById('btnDump').addEventListener('click', async ()=>{
     if(!api) { appendLog('no api'); return; }
     try {
@@ -293,16 +268,9 @@
     } catch(e){ appendLog('dump failed '+e); }
   });
 
-  // viewer small overlay buttons (right top of jaas)
-  document.getElementById('btnFullscreen').addEventListener('click', toggleFullscreen);
-  // show controls only after init (see joined handler)
-
-  // auto-init on load? not automatically; user clicks "Init Viewer"
   appendLog('Viewer ready. Click "Init Viewer" to join.');
 
-  // Expose for debug
   window.__viewerDebug = { initJitsi, getParticipants, apiRef: ()=>api, ensureHideFilmstrip };
-
 })();
 </script>
 </body>
