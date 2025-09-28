@@ -1,62 +1,77 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <title>Viewer — Fullscreen-only</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <!-- JaaS external_api (replace MAGIC_COOKIE in src if different) -->
+  <meta charset="utf-8"/>
+  <title>Viewer — Pin & Fullscreen (8x8 / JaaS)</title>
+
+  <!-- 8x8 / JaaS external API (replace only if you self-host) -->
   <script src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/external_api.js"></script>
 
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    :root { --bg: #000; --panel: #0f1113; --muted:#9faab0; --btn:#222; --btnText:#fff; }
+    :root{--bg:#000;--panel:#111;--muted:#bbb;--btn:#222;--btnText:#fff}
     html,body{height:100%;margin:0;background:var(--bg);color:#fff;font-family:Inter,Arial,Helvetica,sans-serif}
-    /* outer wrapper (we fullscreen this, not the iframe) */
+    /* outer wrapper to fullscreen (keeps background black) */
     #video-wrap{height:calc(100vh - 56px);position:relative;display:flex;align-items:center;justify-content:center;background:#000}
-    /* jitsi iframe container */
     #jaas{width:100%;height:100%;background:#000}
-    /* placeholder shown until host is detected */
-    #placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);z-index:3;font-size:16px;background:#000}
-    /* control bar (only fullscreen button) */
-    #controls{height:56px;display:flex;align-items:center;justify-content:center;background:var(--panel);border-top:1px solid #111}
-    button{padding:10px 14px;border-radius:8px;background:var(--btn);color:var(--btnText);border:0;cursor:pointer;font-size:15px}
+    #placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);z-index:3;font-size:18px;background:#000}
+    #controls{height:56px;display:flex;align-items:center;justify-content:center;background:var(--panel);gap:8px;padding:8px}
+    button{padding:10px 14px;border-radius:8px;background:var(--btn);color:var(--btnText);border:0;cursor:pointer}
     button[disabled]{opacity:.45;cursor:not-allowed}
-    /* ensure Jitsi iframe covers container */
+    /* ensure iframe fills container */
     #jaas iframe{width:100% !important;height:100% !important;border:0;display:block}
-    /* fullscreen outer wrapper black */
+    /* keep black background when fullscreen */
     :fullscreen #video-wrap, :-webkit-full-screen #video-wrap { background:#000; }
+    /* small status */
+    #status { position: absolute; left:8px; top:8px; z-index:4; font-size:12px; color:#9fbac4; background: rgba(0,0,0,0.35); padding:6px 8px; border-radius:6px; }
   </style>
 </head>
 <body>
   <div id="video-wrap" aria-live="polite">
+    <div id="status">status: initializing…</div>
     <div id="placeholder">Waiting for host to start sharing…</div>
     <div id="jaas" aria-label="meeting"></div>
   </div>
+
   <div id="controls">
     <button id="fsBtn" disabled>Fullscreen</button>
   </div>
 
 <script>
-/* ====== CONFIG - set these ====== */
-const ROOM = "vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/AyushLive"; // fully-qualified JaaS room
-const VIEWER_JWT = "PASTE_VIEWER_JWT_HERE"; // put your viewer token here (for quick test)
-/* ================================= */
+/*
+  viewer.html
+  - Paste your ROOM (fully-qualified: <magic>/RoomName) and optionally VIEWER_JWT below
+  - This viewer hides all Jitsi buttons and aggressively pins the host/sharer.
+*/
 
-const apiHost = "8x8.vc"; // JaaS host
+const ROOM = "vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/AyushLive"; // <-- set your room
+const VIEWER_JWT = "eyJraWQiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkvNjM4ODg2LVNBTVBMRV9BUFAiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJqaXRzaSIsImlzcyI6ImNoYXQiLCJpYXQiOjE3NTkwNjY0NzQsImV4cCI6MTc1OTA3MzY3NCwibmJmIjoxNzU5MDY2NDY5LCJzdWIiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkiLCJjb250ZXh0Ijp7ImZlYXR1cmVzIjp7ImxpdmVzdHJlYW1pbmciOnRydWUsImZpbGUtdXBsb2FkIjp0cnVlLCJvdXRib3VuZC1jYWxsIjp0cnVlLCJzaXAtb3V0Ym91bmQtY2FsbCI6ZmFsc2UsInRyYW5zY3JpcHRpb24iOnRydWUsImxpc3QtdmlzaXRvcnMiOmZhbHNlLCJyZWNvcmRpbmciOnRydWUsImZsaXAiOmZhbHNlfSwidXNlciI6eyJoaWRkZW4tZnJvbS1yZWNvcmRlciI6ZmFsc2UsIm1vZGVyYXRvciI6ZmFsc2UsIm5hbWUiOiJWaWV3ZXIiLCJpZCI6Imdvb2dsZS1vYXV0aDJ8MTAzOTkzNzcwNTg5NDYyNTY0ODk3IiwiYXZhdGFyIjoiIiwiZW1haWwiOiIifX0sInJvb20iOiIqIn0.OiAxxUP7f9PPL1-HG0j77Yfyc-M0Z7BgwbIaR_AUmf1OsZiOlunOF1Kka8Q-w9Hjb_tySCzj6j2MGw2tdo9DkPWuHMbHi8x8APo162ykhAI2sGYgxeKQsBYo5U52ypN1srhKhWyva4JVV9_-8rAK8wFCy1ZrLT0ntn2moLkdlZ85i-UyHLqhucvN9eFHJD46a-ac61DCF26STpuZRD_h55-g89fZH71NBMoVV9hRbTdsHKH95tDftrJopaSKIRybGGfDZY5wVWl1wPmJkSSiIkN-8mRnJk_MCSHTYPlDyb1qsz0PQ5nXbVnHK-agMTH_OghE22u8ry8vxtd2ZI37HA"; // <-- paste viewer JWT here for tests (leave empty if not using JWT)
+
+const HOST_API_HOST = "8x8.vc"; // JaaS host for the script used above
+const viewerName = "Viewer_" + Math.floor(Math.random()*9000 + 1000);
+
+const jaasContainer = document.getElementById('jaas');
 const placeholder = document.getElementById('placeholder');
 const fsBtn = document.getElementById('fsBtn');
-const jaas = document.getElementById('jaas');
+const statusEl = document.getElementById('status');
 const videoWrap = document.getElementById('video-wrap');
 
 let api = null;
 let joined = false;
 let lastPinnedId = null;
 
-// Initialize the Jitsi iframe as a viewer with toolbar hidden
-(function init() {
-  const opts = {
+// small helpers
+function logStatus(s){ statusEl.textContent = 'status: ' + s; console.log('[viewer] ', s); }
+function hidePlaceholder(){ placeholder.style.display = 'none'; }
+function showPlaceholder(){ placeholder.style.display = 'flex'; }
+
+// init Jitsi
+(async function init() {
+  logStatus('creating iframe');
+  const options = {
     roomName: ROOM,
-    parentNode: jaas,
-    userInfo: { displayName: 'Viewer_' + Math.floor(Math.random()*9000) },
+    parentNode: jaasContainer,
+    userInfo: { displayName: viewerName },
     configOverwrite: {
       prejoinPageEnabled: false,
       startWithAudioMuted: true,
@@ -65,7 +80,7 @@ let lastPinnedId = null;
       enableWelcomePage: false
     },
     interfaceConfigOverwrite: {
-      TOOLBAR_BUTTONS: [],           // hide all toolbar buttons
+      TOOLBAR_BUTTONS: [],           // hide all toolbar buttons for viewers
       SHOW_JITSI_WATERMARK: false,
       SHOW_BRAND_WATERMARK: false,
       SHOW_POWERED_BY: false
@@ -73,45 +88,50 @@ let lastPinnedId = null;
     width: "100%",
     height: "100%"
   };
-  if (VIEWER_JWT && VIEWER_JWT.trim()) opts.jwt = VIEWER_JWT;
+  if (VIEWER_JWT && VIEWER_JWT.trim()) options.jwt = VIEWER_JWT;
 
   try {
-    api = new JitsiMeetExternalAPI(apiHost, opts);
-    window.__viewerApi = api;
+    api = new JitsiMeetExternalAPI(HOST_API_HOST, options);
+    window.__viewerApi = api; // debug handle
+    logStatus('iframe created');
   } catch (err) {
-    console.error("ExternalAPI init failed:", err);
-    placeholder.textContent = "Failed to load meeting (see console).";
+    console.error('ExternalAPI init failed', err);
+    logStatus('init failed - see console');
     return;
   }
 
-  // event handlers: join, participants, screenshare
+  // attach events we care about
   api.addEventListener('videoConferenceJoined', () => {
     joined = true;
-    fsBtn.disabled = false; // enable fullscreen
-    // immediate attempt to pin host if present
-    aggressivePinHost();
-    // ensure participants pane hidden (run a few times for reliability)
-    hideParticipantsPaneRepeated();
+    logStatus('joined');
+    fsBtn.disabled = false;
+    // try immediate detection/pin
+    setTimeout(aggressivePinHost, 400);
+    // try to close participant pane if open
+    tryCloseParticipantPane();
   });
 
-  api.addEventListener('participantJoined', () => { setTimeout(aggressivePinHost, 600); });
-  api.addEventListener('participantLeft', (p) => {
-    if (p && (p.participantId === lastPinnedId || p.id === lastPinnedId)) lastPinnedId = null;
+  api.addEventListener('participantJoined', () => {
     setTimeout(aggressivePinHost, 600);
+  });
+
+  api.addEventListener('participantLeft', (p) => {
+    if (p && (p.id === lastPinnedId || p.participantId === lastPinnedId)) {
+      lastPinnedId = null;
+      setTimeout(aggressivePinHost, 500);
+    }
   });
 
   api.addEventListener('screenSharingStatusChanged', (payload) => {
     if (payload && payload.on) {
       hidePlaceholder();
-      // if payload may include id, pin quickly
+      // payload may include id
       const pid = payload.participantId || payload.id || payload.participant;
-      if (pid) tryPin(pid);
-      else aggressivePinHost();
-      hideParticipantsPaneRepeated();
+      if (pid) { pinParticipant(pid); }
+      else { aggressivePinHost(); }
     } else {
-      // re-evaluate after share stops
+      // screen stopped: re-evaluate (host may be webcam)
       setTimeout(aggressivePinHost, 700);
-      hideParticipantsPaneRepeated();
     }
   });
 
@@ -119,107 +139,142 @@ let lastPinnedId = null;
     const pid = evt && (evt.participantId || evt.id);
     if (evt && (evt.videoStatus === true) && pid && pid !== api.getCurrentUserID()) {
       hidePlaceholder();
-      tryPin(pid);
-      hideParticipantsPaneRepeated();
+      pinParticipant(pid);
     }
   });
 
-  // periodic re-check to keep host pinned
-  setInterval(() => { if (joined) aggressivePinHost(); }, 3000);
+  // periodic re-check (helps late joiners)
+  setInterval(() => { if (joined) aggressivePinHost(); }, 3500);
 
-  // fullscreen/orientation hooks: force single-large view and pin host
-  document.addEventListener('fullscreenchange', () => setTimeout(() => { api && tryExecute('setTileView', false); aggressivePinHost(); hideParticipantsPaneRepeated(); }, 200));
-  window.addEventListener('orientationchange', () => setTimeout(() => { api && tryExecute('setTileView', false); aggressivePinHost(); hideParticipantsPaneRepeated(); }, 250));
+  // periodical attempt to close participant pane / filmstrip
+  setInterval(tryCloseParticipantPane, 3000);
+
+  // orientation / fullscreen hooks
+  document.addEventListener('fullscreenchange', () => {
+    logStatus('fullscreen change, fixing layout');
+    setTimeout(() => { forceSingleLargeAndPin(); }, 220);
+  });
+  window.addEventListener('orientationchange', () => {
+    logStatus('orientation change, fixing layout');
+    setTimeout(() => { forceSingleLargeAndPin(); }, 280);
+  });
+
+  logStatus('init complete');
 })();
 
-// -------- helpers --------
 
-function hidePlaceholder(){ placeholder.style.display = 'none'; }
-function showPlaceholder(){ placeholder.style.display = 'flex'; }
+// ========== Host detection & pinning logic ==========
 
-function tryExecute(cmd, ...args) {
-  try { api && api.executeCommand && api.executeCommand(cmd, ...args); return true; } catch(e){ /* ignore */ return false; }
-}
-
-async function getParticipants() {
+// Try to find the best host candidate using participants info
+async function findHostCandidate() {
+  if (!api || typeof api.getParticipantsInfo !== 'function') return null;
   try {
-    if (!api || typeof api.getParticipantsInfo !== 'function') return [];
     const info = api.getParticipantsInfo();
     const list = (info && typeof info.then === 'function') ? await info : info;
-    return Array.isArray(list) ? list : [];
-  } catch (e) { return []; }
+    if (!Array.isArray(list) || list.length === 0) return null;
+
+    // prefer screen sharer
+    for (const p of list) {
+      const pid = p.participantId || p.id || p.participant;
+      if (!pid || pid === api.getCurrentUserID()) continue;
+      const features = p.features || {};
+      const isSharing = p.isScreensharing || p.isSharingScreen || features.screenSharing;
+      if (isSharing) return pid;
+    }
+    // fallback: prefer participants with video
+    for (const p of list) {
+      const pid = p.participantId || p.id || p.participant;
+      if (!pid || pid === api.getCurrentUserID()) continue;
+      if (p.hasVideo || p.videoStatus || p.video) return pid;
+    }
+    // final fallback: first remote
+    const firstRemote = list.find(u => (u.participantId || u.id) && ((u.participantId || u.id) !== api.getCurrentUserID()));
+    return firstRemote ? (firstRemote.participantId || firstRemote.id || firstRemote.participant) : null;
+  } catch (e) {
+    console.warn('findHostCandidate err', e);
+    return null;
+  }
 }
 
-function tryPin(pid) {
+function pinParticipant(pid) {
   if (!pid || !api) return false;
-  tryExecute('setTileView', false);
+  try { api.executeCommand('setTileView', false); } catch(e){}
   try {
     api.executeCommand('pinParticipant', pid);
     lastPinnedId = pid;
     hidePlaceholder();
+    logStatus('pinned: ' + pid);
     return true;
-  } catch (e) {
-    try { api.executeCommand('setLargeVideoParticipant', pid); lastPinnedId = pid; hidePlaceholder(); return true; } catch(e2){ return false; }
+  } catch(e) {
+    try { api.executeCommand('setLargeVideoParticipant', pid); lastPinnedId = pid; hidePlaceholder(); return true; } catch(e){}
+    console.warn('pin failed', e);
+    return false;
   }
 }
 
-async function findHostCandidate() {
-  const list = await getParticipants();
-  if (!list || list.length === 0) return null;
-  // heuristics: prefer screen sharer, then any with video, then first remote
-  for (const p of list) {
-    const pid = p.participantId || p.id || p.participant;
-    if (!pid || pid === api.getCurrentUserID()) continue;
-    const features = p.features || {};
-    const isSharing = p.isScreensharing || p.isSharingScreen || features.screenSharing;
-    if (isSharing) return pid;
-  }
-  for (const p of list) {
-    const pid = p.participantId || p.id || p.participant;
-    if (!pid || pid === api.getCurrentUserID()) continue;
-    if (p.hasVideo || p.videoStatus || p.video) return pid;
-  }
-  const firstRemote = list.find(u => (u.participantId || u.id) && ((u.participantId || u.id) !== api.getCurrentUserID()));
-  return firstRemote ? (firstRemote.participantId || firstRemote.id || firstRemote.participant) : null;
-}
-
-async function aggressivePinHost(retries = 4, delayMs = 400) {
+// Aggressively attempt to locate and pin host (multiple retries)
+async function aggressivePinHost(retries = 5, delayMs = 350) {
   for (let i=0;i<retries;i++){
     const pid = await findHostCandidate();
-    if (pid) { if (tryPin(pid)) return true; }
+    if (pid) {
+      const ok = pinParticipant(pid);
+      if (ok) return true;
+    }
     await new Promise(r => setTimeout(r, delayMs));
   }
-  // no candidate found yet
+  // not found: keep placeholder visible
+  logStatus('no host found yet');
   showPlaceholder();
   return false;
 }
 
-// Try to hide the participants side pane by toggling it (call multiple times to ensure closed)
-function hideParticipantsPaneRepeated(times = 3, gap = 220) {
-  for (let i=0;i<times;i++){
-    setTimeout(()=> {
-      tryExecute('toggleParticipantsPane'); // best-effort - some versions support this
-      // also try to force single large view
-      tryExecute('setTileView', false);
-      // also try to pin known lastPinnedId
-      if (lastPinnedId) tryPin(lastPinnedId);
-    }, i * gap);
-  }
+// Force single-large view and pin (used on fullscreen/orientation)
+async function forceSingleLargeAndPin() {
+  try { if (api) api.executeCommand('setTileView', false); } catch(e){}
+  await aggressivePinHost(6, 300);
+  // attempt a couple of re-pins (mobile timing)
+  setTimeout(()=>{ if (lastPinnedId) try { api.executeCommand('pinParticipant', lastPinnedId); } catch(e){} }, 300);
+  setTimeout(()=>{ if (lastPinnedId) try { api.executeCommand('pinParticipant', lastPinnedId); } catch(e){} }, 900);
 }
 
-// attempt to pin then ensure placeholder hidden
-function pinAndHide(pid) { tryPin(pid); hidePlaceholder(); }
-
-// Fullscreen button logic — only enabled after joined
-fsBtn.addEventListener('click', async () => {
-  if (!api || !joined) { placeholder.textContent = "Joining… please wait"; return; }
+// ========== participant pane / filmstrip hiding (best-effort) ==========
+function tryCloseParticipantPane() {
+  if (!api) return;
+  // Try a few commands that exist in some Jitsi builds; wrap in try/catch
   try {
-    if (videoWrap.requestFullscreen) await videoWrap.requestFullscreen();
-    else if (videoWrap.webkitRequestFullscreen) await videoWrap.webkitRequestFullscreen();
-    // after FS, ensure view is large and host pinned
-    setTimeout(() => { tryExecute('setTileView', false); aggressivePinHost(); hideParticipantsPaneRepeated(); }, 300);
-  } catch (e) { console.warn('fullscreen failed', e); }
+    // 'toggleParticipantsPane' or 'toggleLobby' or 'toggleFilmStrip' might exist in different builds
+    api.executeCommand && api.executeCommand('toggleParticipantsPane');
+  } catch(e){}
+  try { api.executeCommand('toggleFilmStrip'); } catch(e){}
+  try { api.executeCommand('hideParticipants'); } catch(e){}
+  try { api.executeCommand('toggleFilmStripView'); } catch(e){}
+  // also explicitly ask for single-large view
+  try { api.executeCommand('setTileView', false); } catch(e){}
+}
+
+// ========== Fullscreen button behaviour ==========
+fsBtn.addEventListener('click', async () => {
+  if (!api || !joined) {
+    logStatus('not joined yet — wait');
+    return;
+  }
+  const el = videoWrap;
+  try {
+    if (el.requestFullscreen) await el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+    else if (el.msRequestFullscreen) await el.msRequestFullscreen();
+  } catch (err) {
+    console.warn('fullscreen failed', err);
+  }
 });
+
+// expose small debug helper
+window.__viewerHelpers = { aggressivePinHost, forceSingleLargeAndPin, tryCloseParticipantPane };
+
+// small poll to try pinning if the placeholder is stuck (helps late viewers)
+setInterval(() => {
+  if (api && joined) aggressivePinHost(2, 250).catch(()=>{});
+}, 3500);
 </script>
 </body>
 </html>
