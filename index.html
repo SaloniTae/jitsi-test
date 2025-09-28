@@ -2,96 +2,333 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Live — Viewer</title>
-  <!-- use meet.jit.si external API (no JWT required for quick test) -->
+  <title>Live Viewer — Host-first</title>
+
+  <!-- For quick testing we use meet.jit.si external_api.js -->
   <script src="https://meet.jit.si/external_api.js"></script>
+
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    html,body{height:100%;margin:0;background:#000;color:#fff;font-family:Arial}
-    #video-wrap{height:calc(100vh - 56px);position:relative;display:flex;align-items:center;justify-content:center}
-    #jaas{width:100%;height:100%;}
-    #placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#bbb;z-index:2;background:linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.2));font-size:18px}
-    #controls{height:56px;display:flex;align-items:center;justify-content:center;background:#111}
-    button{padding:10px 14px;border-radius:6px;background:#333;color:#fff;border:0;cursor:pointer}
+    :root { --bg: #000; --panel: #111; --muted: #bbb; --btn: #333; --btnText: #fff; }
+    html,body{height:100%;margin:0;background:var(--bg);color:#fff;font-family:Inter,system-ui,Arial,Helvetica,sans-serif}
+    /* outer wrapper that we will fullscreen - black background (no blur) */
+    #video-wrap { height: calc(100vh - 56px); position:relative; display:flex; align-items:center; justify-content:center; background: #000; }
+    /* jitsi container where iframe will be injected */
+    #jaas { width:100%; height:100%; display:block; background:#000; }
+    /* placeholder covers entire area until host publishes */
+    #placeholder { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); z-index:3; font-size:18px; background:#000; }
+    /* controls */
+    #controls { height:56px; display:flex; align-items:center; justify-content:center; gap:12px; background:var(--panel); border-top:1px solid #222; }
+    button { padding:10px 14px; border-radius:8px; background:var(--btn); color:var(--btnText); border:0; cursor:pointer; font-size:15px; }
+    button[disabled] { opacity:.45; cursor:not-allowed; }
+    /* ensure iframe fills container (External API inserts its iframe) */
+    #jaas iframe { width:100% !important; height:100% !important; border:0; display:block; }
+    /* When outer wrapper is fullscreen keep black background (no blur) */
+    :fullscreen #video-wrap, :-webkit-full-screen #video-wrap { background:#000; }
   </style>
 </head>
 <body>
-  <div id="video-wrap">
-    <div id="placeholder">Waiting for host to join and share screen/video…</div>
-    <div id="jaas"></div>
+
+  <div id="video-wrap" aria-live="polite">
+    <div id="placeholder">Waiting for host to join and share screen / video…</div>
+    <div id="jaas" aria-label="meeting"></div>
   </div>
-  <div id="controls"><button id="fs">Fullscreen</button></div>
+
+  <div id="controls">
+    <button id="fsBtn" disabled>Fullscreen</button>
+  </div>
 
 <script>
-(async ()=>{
-  // === CONFIG ===
-  // Pick a simple room name. The host must use the same name on meet.jit.si
-  const ROOM = "Ayush37299"; // <-- change this if you like
-  // Generate a random viewer name
-  const myName = "Viewer_" + Math.floor(Math.random()*9000 + 1000);
+/*
+  viewer.html — Host-first viewer page
+  - Default quick test uses meet.jit.si (no JWT)
+  - If you use JaaS (8x8) replace ROOM and set JWT variable.
+  - Save and open in a normal top-level tab (not cross-origin iframe).
+*/
 
-  // Create the Jitsi iframe as a viewer (no JWT)
-  const api = new JitsiMeetExternalAPI("meet.jit.si", {
+// ========== CONFIG ==========
+// ROOM to use — host must join same room (quick test uses meet.jit.si)
+const ROOM = "Ayush37299"; // change if you used another room name on the host
+// Optional: If you use JaaS/8x8, set JWT here and change API host from "meet.jit.si" to "8x8.vc"
+// const JWT = "eyJ..."; // leave empty for meet.jit.si quick test
+const JWT = ""; // keep empty for quick testing on meet.jit.si
+// Optional: If you want to prefer a host display name to detect/pin quickly, add here:
+const PREFERRED_HOST_NAMES = ["Host", "Ayush", "Host-PC"]; // add the exact displayName(s) if you use them
+// ============================
+
+
+// helper: random viewer name
+const viewerName = "Viewer-" + Math.floor(Math.random() * 9000 + 1000);
+
+// DOM refs
+const placeholder = document.getElementById('placeholder');
+const fsBtn = document.getElementById('fsBtn');
+const jaasContainer = document.getElementById('jaas');
+const videoWrap = document.getElementById('video-wrap');
+
+let api = null;
+let joined = false;
+let lastPinnedHostId = null;
+
+// init Jitsi External API
+(async function init() {
+  const options = {
     roomName: ROOM,
-    parentNode: document.getElementById('jaas'),
-    userInfo: { displayName: myName },
+    parentNode: jaasContainer,
+    userInfo: { displayName: viewerName },
     configOverwrite: {
-      prejoinPageEnabled: false,
+      prejoinPageEnabled: false,     // try to bypass prejoin screen
       startWithAudioMuted: true,
       startWithVideoMuted: true,
-      disableDeepLinking: true
+      disableDeepLinking: true,
+      enableWelcomePage: false
     },
     interfaceConfigOverwrite: {
-      TOOLBAR_BUTTONS: [],           // hide controls for viewers
+      TOOLBAR_BUTTONS: [],          // hide controls for viewers
       SHOW_JITSI_WATERMARK: false,
       SHOW_BRAND_WATERMARK: false,
       SHOW_POWERED_BY: false
     },
     width: "100%",
     height: "100%"
+  };
+
+  if (JWT && JWT.trim()) options.jwt = JWT;
+
+  try {
+    // Use meet.jit.si by default — change hostname if using JaaS: new JitsiMeetExternalAPI("8x8.vc", options)
+    api = new JitsiMeetExternalAPI("meet.jit.si", options);
+    // expose for debugging
+    window.jitsiApi = api;
+  } catch (err) {
+    console.error("Failed to initialize Jitsi External API:", err);
+    placeholder.textContent = "Failed to initialize meeting (see console).";
+    return;
+  }
+
+  // Events
+  api.addEventListener('videoConferenceJoined', () => {
+    joined = true;
+    console.log("Viewer joined conference as:", viewerName);
+    fsBtn.disabled = false; // allow fullscreen now
+    // try to detect host if already present
+    findHostAndHide();
   });
 
-  const placeholder = document.getElementById('placeholder');
-
-  // When host starts screen share, the iframe will emit screenSharingStatusChanged
   api.addEventListener('screenSharingStatusChanged', (payload) => {
-    if (payload && payload.on) placeholder.style.display = 'none';
-  });
-
-  // When any remote participant turns on camera, hide placeholder
-  api.addEventListener('participantVideoStatusChanged', (evt) => {
-    if (evt && (evt.videoStatus === true) && (evt.participantId !== api.getCurrentUserID())) {
-      placeholder.style.display = 'none';
-      try { api.executeCommand('pinParticipant', evt.participantId || evt.id); } catch(e){}
+    // payload.on === true indicates screen sharing started
+    if (payload && payload.on) {
+      hidePlaceholder();
+      if (payload.id) tryPinParticipant(payload.id);
     }
   });
 
-  // Also try to find host after we join (in case event was missed)
-  api.addEventListener('videoConferenceJoined', async () => {
-    try {
-      const info = api.getParticipantsInfo && api.getParticipantsInfo();
-      const list = (info && typeof info.then === 'function') ? await info : info;
-      if (Array.isArray(list) && list.length) {
-        for (const p of list) {
-          if (p && (p.isScreensharing || p.isSharingScreen || p.hasVideo || p.videoStatus)) {
-            placeholder.style.display = 'none';
-            try{ api.executeCommand('pinParticipant', p.participantId || p.id); }catch(e){}
-            break;
-          }
-        }
-      }
-    } catch(e){}
+  api.addEventListener('participantVideoStatusChanged', (evt) => {
+    // evt.videoStatus === true when remote camera turned on
+    const pId = evt && (evt.participantId || evt.id);
+    if (evt && (evt.videoStatus === true) && pId && pId !== api.getCurrentUserID()) {
+      hidePlaceholder();
+      tryPinParticipant(pId);
+    }
   });
 
-  // Fullscreen: expand the iframe container only (won't re-open join UI)
-  document.getElementById('fs').addEventListener('click', async ()=>{
-    const el = document.getElementById('jaas');
-    if (el.requestFullscreen) await el.requestFullscreen();
-    else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
-    else if (el.msRequestFullscreen) await el.msRequestFullscreen();
+  api.addEventListener('participantJoined', (p) => {
+    // small delay because participant may not have features immediately
+    setTimeout(findHostAndHide, 700);
+  });
+
+  // watch for share or camera stop to show placeholder again optionally
+  api.addEventListener('screenSharingStatusChanged', (payload) => {
+    if (payload && !payload.on) {
+      // don't aggressively show placeholder — host might switch to webcam; run detection
+      setTimeout(findHostAndHide, 800);
+    }
+  });
+
+  // periodic check in case events were missed — helps viewers opening late
+  setInterval(findHostAndHide, 3000);
+
+  // fullscreen/orientation handlers to keep pinned host
+  function onFullscreenOrOrientationChange() {
+    setTimeout(() => { ensurePinHost(4, 300).catch(()=>{}); }, 240);
+  }
+  document.addEventListener('fullscreenchange', onFullscreenOrOrientationChange);
+  window.addEventListener('orientationchange', onFullscreenOrOrientationChange);
+
+  // also pin when someone who looks like host turns on cam or starts share
+  api.addEventListener('participantVideoStatusChanged', (evt) => {
+    if (evt && evt.videoStatus && (evt.participantId !== api.getCurrentUserID())) {
+      ensurePinHost().catch(()=>{});
+    }
   });
 
 })();
+
+// ========== Helpers ==========
+
+// hide/show placeholder
+function hidePlaceholder() { placeholder.style.display = 'none'; }
+function showPlaceholder() { placeholder.style.display = 'flex'; }
+
+// robust host detection: prefer screen-sharer, then preferred display names, then moderator, then first remote with video, then any remote
+async function findHostParticipantId() {
+  try {
+    if (!api || typeof api.getParticipantsInfo !== 'function') return null;
+    const info = api.getParticipantsInfo();
+    const list = (info && typeof info.then === 'function') ? await info : info;
+    if (!Array.isArray(list) || list.length === 0) return null;
+
+    // 1) screen sharer
+    for (const p of list) {
+      const pid = p.participantId || p.id || p.participant;
+      if (!pid || pid === api.getCurrentUserID()) continue;
+      const features = p.features || {};
+      const isSharing = p.isScreensharing || p.isSharingScreen || features.screenSharing;
+      if (isSharing) return pid;
+    }
+    // 2) preferred host names
+    if (Array.isArray(PREFERRED_HOST_NAMES) && PREFERRED_HOST_NAMES.length) {
+      for (const p of list) {
+        const pid = p.participantId || p.id || p.participant;
+        const name = (p.displayName || p.formattedDisplayName || p.name || "").toString();
+        if (!pid || pid === api.getCurrentUserID() || !name) continue;
+        if (PREFERRED_HOST_NAMES.includes(name)) return pid;
+      }
+    }
+    // 3) moderator flag
+    for (const p of list) {
+      const pid = p.participantId || p.id || p.participant;
+      if (!pid || pid === api.getCurrentUserID()) continue;
+      if (p.isModerator || p.moderator || p.role === 'moderator') return pid;
+    }
+    // 4) first remote with video
+    for (const p of list) {
+      const pid = p.participantId || p.id || p.participant;
+      if (!pid || pid === api.getCurrentUserID()) continue;
+      if (p.hasVideo || p.videoStatus || p.video) return pid;
+    }
+    // 5) fallback first remote
+    const firstRemote = list.find(u => (u.participantId || u.id) && ((u.participantId || u.id) !== api.getCurrentUserID()));
+    return firstRemote ? (firstRemote.participantId || firstRemote.id || firstRemote.participant) : null;
+
+  } catch (e) {
+    console.warn("findHostParticipantId error:", e);
+    return null;
+  }
+}
+
+// try to pin a participant id (safe wrappers and fallbacks)
+function tryPinParticipant(pid) {
+  if (!pid || !api) return;
+  try {
+    api.executeCommand('setTileView', false); // request single large
+  } catch(e){}
+  try {
+    api.executeCommand('pinParticipant', pid);
+    lastPinnedHostId = pid;
+  } catch (err) {
+    try {
+      api.executeCommand('setLargeVideoParticipant', pid);
+      lastPinnedHostId = pid;
+    } catch(e) {
+      console.warn("pinParticipant failed", e);
+    }
+  }
+}
+
+// ensure host pinned: find best candidate and pin, multiple attempts (works around timing race on mobile)
+async function ensurePinHost(retries = 3, delayMs = 400) {
+  for (let i = 0; i < retries; i++) {
+    const hostId = await findHostParticipantId();
+    if (!hostId) {
+      await new Promise(r => setTimeout(r, delayMs));
+      continue;
+    }
+    try {
+      try { api.executeCommand('setTileView', false); } catch(e){}
+      try {
+        api.executeCommand('pinParticipant', hostId);
+        lastPinnedHostId = hostId;
+      } catch (err) {
+        try { api.executeCommand('setLargeVideoParticipant', hostId); lastPinnedHostId = hostId; } catch(e){}
+      }
+      // small follow-up to re-pin if needed
+      await new Promise(r => setTimeout(r, 220));
+      try { if (lastPinnedHostId) api.executeCommand('pinParticipant', lastPinnedHostId); } catch(e){}
+      hidePlaceholder();
+      return true;
+    } catch (err) {
+      console.warn("ensurePinHost attempt error:", err);
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+  return false;
+}
+
+// High-level: find host and hide placeholder
+async function findHostAndHide() {
+  const hostId = await findHostParticipantId();
+  if (hostId) {
+    tryPinParticipant(hostId);
+    hidePlaceholder();
+    return true;
+  } else {
+    // no host found yet
+    showPlaceholder();
+    return false;
+  }
+}
+
+// Periodically attempt to detect host until found
+const hostPollInterval = setInterval(async () => {
+  if (!joined && api && typeof api.getCurrentUserID === 'function' && api.getCurrentUserID()) {
+    // not joined? join will trigger findHostAndHide on videoConferenceJoined
+  }
+  await findHostAndHide();
+}, 3500);
+
+// Enable Fullscreen button only after viewer has joined (prevents opening prejoin)
+fsBtn.addEventListener('click', async () => {
+  if (!joined) {
+    placeholder.textContent = "Joining meeting… please wait";
+    return;
+  }
+  // Fullscreen the outer wrapper (videoWrap) — this avoids exposing iframe internal prejoin UI
+  const el = videoWrap;
+  try {
+    if (el.requestFullscreen) await el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+    else if (el.msRequestFullscreen) await el.msRequestFullscreen();
+  } catch (err) {
+    console.warn("Fullscreen failed:", err);
+  }
+});
+
+// Safety: periodically re-pin while fullscreen (helps keep host pinned on mobile)
+let monitorInterval = null;
+document.addEventListener('fullscreenchange', () => {
+  if (document.fullscreenElement) {
+    // start monitoring every 1.5s while fullscreen
+    if (!monitorInterval) monitorInterval = setInterval(() => ensurePinHost(1,100).catch(()=>{}), 1500);
+  } else {
+    if (monitorInterval) { clearInterval(monitorInterval); monitorInterval = null; }
+  }
+});
+
+// Debug helper: expose find/pin on window for manual debugging (optional)
+window.__viewerDebug = {
+  findHostAndHide,
+  ensurePinHost,
+  tryPinParticipant,
+  getParticipantsInfo: async () => {
+    if (!api) return null;
+    try {
+      const info = api.getParticipantsInfo();
+      return (info && info.then) ? await info : info;
+    } catch(e) { console.warn(e); return null; }
+  }
+};
+
 </script>
 </body>
 </html>
