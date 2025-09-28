@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Viewer — Live</title>
+  <script src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/external_api.js"></script>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    html,body{height:100%;margin:0;background:#000;color:#fff;font-family:Arial}
+    #video-wrap{height:calc(100vh - 56px);position:relative;display:flex;align-items:center;justify-content:center;background:#000}
+    #jaas{width:100%;height:100%;}
+    #placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#bbb;z-index:2;background:rgba(0,0,0,0.45)}
+    #controls{height:56px;display:flex;align-items:center;justify-content:center;background:#111}
+    button{padding:10px 14px;border-radius:6px;background:#333;color:#fff;border:0;cursor:pointer}
+  </style>
+</head>
+<body>
+  <div id="video-wrap">
+    <div id="placeholder">Waiting for host to start sharing…</div>
+    <div id="jaas"></div>
+  </div>
+  <div id="controls"><button id="fs">Fullscreen</button></div>
+
+<script>
+(async ()=>{
+  const ROOM = "vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/AyushLive";
+  const VIEWER_JWT = "eyJraWQiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkvNjM4ODg2LVNBTVBMRV9BUFAiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJqaXRzaSIsImlzcyI6ImNoYXQiLCJpYXQiOjE3NTkwNjQ2NzUsImV4cCI6MTc1OTA3MTg3NSwibmJmIjoxNzU5MDY0NjcwLCJzdWIiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkiLCJjb250ZXh0Ijp7ImZlYXR1cmVzIjp7ImxpdmVzdHJlYW1pbmciOnRydWUsImZpbGUtdXBsb2FkIjp0cnVlLCJvdXRib3VuZC1jYWxsIjp0cnVlLCJzaXAtb3V0Ym91bmQtY2FsbCI6ZmFsc2UsInRyYW5zY3JpcHRpb24iOnRydWUsImxpc3QtdmlzaXRvcnMiOmZhbHNlLCJyZWNvcmRpbmciOnRydWUsImZsaXAiOmZhbHNlfSwidXNlciI6eyJoaWRkZW4tZnJvbS1yZWNvcmRlciI6ZmFsc2UsIm1vZGVyYXRvciI6ZmFsc2UsIm5hbWUiOiJWaWV3ZXIiLCJpZCI6Imdvb2dsZS1vYXV0aDJ8MTAzOTkzNzcwNTg5NDYyNTY0ODk3IiwiYXZhdGFyIjoiIiwiZW1haWwiOiIifX0sInJvb20iOiIqIn0.iUKS1JqLCSyj-d2ROggfwJVoDr4s3umcGApPgcZLDktbiUxHl6J2Qqg2PR3SrUZmCg9IkICBNXG-a4fDY1JB3Z17vkxFmTndKZCcjKoVF1aayLP0y7WRywQXw2kr6Zvr8djktphpchiOcKzH_Ctyjw7t0S9w59wAbFt6Hbvw0jevZTuIHlTI7U0Vb6FXllaIGY3AMPeQsd0Pl3-s-e4VhxrA1icdSqUsrsobt3JY3d1tnvUZNuZ9m0J9SrV-wBcOzep51aOGfzR8fVS2FUdMgH0_ZTi9-am626GqkHnT42naTXQO4OO3pUwExFvgIYzOsZSITmhtzSIt89gZjBIBnw";
+
+  const api = new JitsiMeetExternalAPI("8x8.vc", {
+    roomName: ROOM,
+    parentNode: document.getElementById('jaas'),
+    jwt: VIEWER_JWT,
+    userInfo: { displayName: 'Viewer_' + Math.floor(Math.random()*1000) },
+    configOverwrite: {
+      prejoinPageEnabled: false,
+      startWithAudioMuted: true,
+      startWithVideoMuted: true,
+      disableDeepLinking: true
+    },
+    interfaceConfigOverwrite: {
+      TOOLBAR_BUTTONS: [], // hide controls for viewers
+      SHOW_JITSI_WATERMARK: false
+    },
+    width: '100%', height: '100%'
+  });
+
+  api.addEventListener('videoConferenceJoined', () => {
+    console.log('Viewer joined.');
+  });
+
+  // try to pin any remote who is sharing or has video
+  api.addEventListener('participantJoined', async () => {
+    try {
+      const info = api.getParticipantsInfo && api.getParticipantsInfo();
+      const list = (info && typeof info.then === 'function') ? await info : info;
+      if (Array.isArray(list)) {
+        for (const p of list) {
+          const pid = p.participantId || p.id || p.participant;
+          if (!pid || pid === api.getCurrentUserID()) continue;
+          const features = p.features || {};
+          const isSharing = p.isScreensharing || p.isSharingScreen || features.screenSharing;
+          if (isSharing || p.hasVideo || p.videoStatus) {
+            try { api.executeCommand('pinParticipant', pid); api.executeCommand('setTileView', false); } catch(e){}
+            document.getElementById('placeholder').style.display = 'none';
+            break;
+          }
+        }
+      }
+    } catch(e){ console.warn(e); }
+  });
+
+  document.getElementById('fs').addEventListener('click', async () => {
+    const el = document.getElementById('video-wrap');
+    if (el.requestFullscreen) await el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+  });
+
+  window.__viewerApi = api;
+})();
+</script>
+</body>
+</html>
