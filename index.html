@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Live — Viewer</title>
+  <!-- use meet.jit.si external API (no JWT required for quick test) -->
+  <script src="https://meet.jit.si/external_api.js"></script>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    html,body{height:100%;margin:0;background:#000;color:#fff;font-family:Arial}
+    #video-wrap{height:calc(100vh - 56px);position:relative;display:flex;align-items:center;justify-content:center}
+    #jaas{width:100%;height:100%;}
+    #placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#bbb;z-index:2;background:linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.2));font-size:18px}
+    #controls{height:56px;display:flex;align-items:center;justify-content:center;background:#111}
+    button{padding:10px 14px;border-radius:6px;background:#333;color:#fff;border:0;cursor:pointer}
+  </style>
+</head>
+<body>
+  <div id="video-wrap">
+    <div id="placeholder">Waiting for host to join and share screen/video…</div>
+    <div id="jaas"></div>
+  </div>
+  <div id="controls"><button id="fs">Fullscreen</button></div>
+
+<script>
+(async ()=>{
+  // === CONFIG ===
+  // Pick a simple room name. The host must use the same name on meet.jit.si
+  const ROOM = "Ayush37299"; // <-- change this if you like
+  // Generate a random viewer name
+  const myName = "Viewer_" + Math.floor(Math.random()*9000 + 1000);
+
+  // Create the Jitsi iframe as a viewer (no JWT)
+  const api = new JitsiMeetExternalAPI("meet.jit.si", {
+    roomName: ROOM,
+    parentNode: document.getElementById('jaas'),
+    userInfo: { displayName: myName },
+    configOverwrite: {
+      prejoinPageEnabled: false,
+      startWithAudioMuted: true,
+      startWithVideoMuted: true,
+      disableDeepLinking: true
+    },
+    interfaceConfigOverwrite: {
+      TOOLBAR_BUTTONS: [],           // hide controls for viewers
+      SHOW_JITSI_WATERMARK: false,
+      SHOW_BRAND_WATERMARK: false,
+      SHOW_POWERED_BY: false
+    },
+    width: "100%",
+    height: "100%"
+  });
+
+  const placeholder = document.getElementById('placeholder');
+
+  // When host starts screen share, the iframe will emit screenSharingStatusChanged
+  api.addEventListener('screenSharingStatusChanged', (payload) => {
+    if (payload && payload.on) placeholder.style.display = 'none';
+  });
+
+  // When any remote participant turns on camera, hide placeholder
+  api.addEventListener('participantVideoStatusChanged', (evt) => {
+    if (evt && (evt.videoStatus === true) && (evt.participantId !== api.getCurrentUserID())) {
+      placeholder.style.display = 'none';
+      try { api.executeCommand('pinParticipant', evt.participantId || evt.id); } catch(e){}
+    }
+  });
+
+  // Also try to find host after we join (in case event was missed)
+  api.addEventListener('videoConferenceJoined', async () => {
+    try {
+      const info = api.getParticipantsInfo && api.getParticipantsInfo();
+      const list = (info && typeof info.then === 'function') ? await info : info;
+      if (Array.isArray(list) && list.length) {
+        for (const p of list) {
+          if (p && (p.isScreensharing || p.isSharingScreen || p.hasVideo || p.videoStatus)) {
+            placeholder.style.display = 'none';
+            try{ api.executeCommand('pinParticipant', p.participantId || p.id); }catch(e){}
+            break;
+          }
+        }
+      }
+    } catch(e){}
+  });
+
+  // Fullscreen: expand the iframe container only (won't re-open join UI)
+  document.getElementById('fs').addEventListener('click', async ()=>{
+    const el = document.getElementById('jaas');
+    if (el.requestFullscreen) await el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+    else if (el.msRequestFullscreen) await el.msRequestFullscreen();
+  });
+
+})();
+</script>
+</body>
+</html>
