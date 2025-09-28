@@ -2,38 +2,61 @@
 <html>
 <head>
 <meta charset="utf-8"/>
-<title>Viewer — DEBUG</title>
+<title>Viewer — Minimal UI / Fullscreen</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<!-- JaaS external_api.js (your magic cookie already included) -->
+<!-- JaaS external_api.js (keep your magic cookie path) -->
 <script src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/external_api.js"></script>
+
 <style>
-  body{margin:0;font-family:system-ui,Arial;background:#071019;color:#e6f0f3}
-  #main {display:flex; height:100vh;}
-  #left {flex:1; display:flex; flex-direction:column; background:#000}
-  #jaas {flex:1; min-height:200px; background:#000}
-  #controls {height:56px; display:flex; gap:8px; align-items:center; padding:8px; background:#0d1520}
-  button{padding:8px 12px;border-radius:6px;border:0;background:#1b2835;color:#fff;cursor:pointer}
-  #debug {width:420px;background:#071018;border-left:1px solid #0f2533;overflow:auto;padding:8px;box-sizing:border-box}
-  #log {height:45vh; overflow:auto; background:#021018; color:#bfe7ff; padding:8px; border-radius:6px; font-size:12px}
-  #participants {height:45vh; overflow:auto; background:#021018; color:#d0f0e8; padding:8px; border-radius:6px; margin-top:8px; font-size:12px}
-  label{display:block;margin:6px 0;font-size:13px}
-  input[type=text]{width:100%;padding:6px;border-radius:6px;border:1px solid #0f2430;background:#021018;color:#fff}
-  .small{font-size:12px;color:#9fbac4}
+  :root { --bg:#000; --panel:#071018; --panel-2:#0d1520; --text:#e6f0f3; --muted:#9fbac4; }
+  html,body{height:100%; margin:0; font-family:system-ui,Arial,Helvetica,sans-serif; background:var(--bg); color:var(--text)}
+  #main {display:flex; height:100vh; gap:0;}
+  /* left: Jitsi container */
+  #left {flex:1; display:flex; flex-direction:column; background:var(--bg); min-width:0;}
+  #jaas {flex:1; min-height:200px; background:var(--bg); position:relative; overflow:hidden;}
+  /* overlay small controls */
+  .viewer-controls {
+    position:absolute; right:12px; top:12px; z-index:9999; display:flex; gap:8px;
+    align-items:center;
+  }
+  .viewer-controls button {
+    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.06);
+    padding:8px 10px; color:var(--text); border-radius:6px; cursor:pointer;
+    backdrop-filter: blur(6px);
+    font-size:13px;
+  }
+  /* right: debug */
+  #debug {width:420px; background:var(--panel); border-left:1px solid #0f2533; overflow:auto; padding:10px; box-sizing:border-box;}
+  #controls {height:56px; display:flex; gap:8px; align-items:center; padding:8px; background:var(--panel-2); border-radius:6px}
+  button.big {padding:8px 12px;border-radius:6px;border:0;background:#1b2835;color:#fff;cursor:pointer}
+  label{display:block;margin:8px 0 6px 0;font-size:13px}
+  input[type=text]{width:100%;padding:8px;border-radius:6px;border:1px solid #0f2430;background:#021018;color:#fff;box-sizing:border-box}
+  .small{font-size:12px;color:var(--muted)}
   .warn{color:#ffb3a7}
-  pre{white-space:pre-wrap;word-wrap:break-word}
+  #log {height:40vh; overflow:auto; background:#021018; color:#bfe7ff; padding:8px; border-radius:6px; font-size:12px}
+  #participants {height:40vh; overflow:auto; background:#021018; color:#d0f0e8; padding:8px; border-radius:6px; margin-top:8px; font-size:12px}
+  pre{white-space:pre-wrap; word-wrap:break-word; margin:0;}
+  /* small responsive tweak */
+  @media (max-width:900px){ #debug{display:none} }
 </style>
 </head>
 <body>
 <div id="main">
   <div id="left">
-    <div id="jaas" aria-label="meeting"></div>
-    <div id="controls">
-      <button id="btnReinitShow">Re-init (show UI)</button>
-      <button id="btnReinitHide">Re-init (hide UI)</button>
-      <button id="btnRefresh">Refresh participants</button>
-      <button id="btnPinFirst">Pin first remote</button>
-      <button id="btnDump">Dump participants to console</button>
-      <div style="margin-left:auto" class="small">Debug viewer</div>
+    <div id="jaas" aria-label="meeting">
+      <!-- custom small overlay controls -->
+      <div class="viewer-controls" id="viewerControls" style="display:none">
+        <button id="btnUnhide">Show UI</button>
+        <button id="btnFullscreen">Fullscreen</button>
+      </div>
+    </div>
+
+    <div style="height:56px; display:flex; align-items:center; gap:8px; padding:8px; background:#071018;">
+      <button id="btnInit" class="big">Init Viewer</button>
+      <button id="btnMute" class="big">Toggle Mute</button>
+      <button id="btnPinFirst" class="big">Pin First Remote</button>
+      <button id="btnDump" class="big">Dump participants</button>
+      <div style="margin-left:auto" class="small">Minimal viewer — black background</div>
     </div>
   </div>
 
@@ -50,7 +73,7 @@
 
     <div style="height:12px"></div>
     <div class="small warn">Steps: 1) Open host (use host.html or JaaS console) and share screen.  
-    2) Click "Re-init (show UI)". 3) Watch events & participants. If no host appears, host didn't publish or token/room mismatch.</div>
+    2) Click "Init Viewer". 3) Viewer will join with no toolbar and black background. Filmstrip is auto-hidden.</div>
   </div>
 </div>
 
@@ -63,7 +86,7 @@
 
   let api = null;
   let joined = false;
-  let latestParticipants = null;
+  let lastMuteState = true; // start with audio muted
 
   function appendLog(txt){
     const time = new Date().toLocaleTimeString();
@@ -73,10 +96,8 @@
   }
 
   function renderParticipants(list){
-    latestParticipants = list;
-    try {
-      partsEl.innerText = JSON.stringify(list, null, 2);
-    } catch(e){ partsEl.innerText = String(list); }
+    try { partsEl.innerText = JSON.stringify(list, null, 2); }
+    catch(e){ partsEl.innerText = String(list); }
   }
 
   async function getParticipants(){
@@ -106,32 +127,57 @@
       try {
         apiInstance.addEventListener(ev, (payload) => {
           appendLog(ev + ' : ' + (payload && typeof payload === 'object' ? JSON.stringify(payload) : String(payload)));
-          // refresh participants on relevant events
-          if (['participantJoined','participantLeft','participantVideoStatusChanged','screenSharingStatusChanged','participantRoleChanged'].includes(ev)) {
+          if (['participantJoined','participantLeft','participantVideoStatusChanged','screenSharingStatusChanged','participantRoleChanged','videoConferenceJoined'].includes(ev)) {
             setTimeout(getParticipants, 300);
+          }
+          if (ev === 'videoConferenceJoined') {
+            // ensure filmstrip is hidden shortly after join
+            ensureHideFilmstrip(apiInstance);
           }
         });
       } catch(e){ console.warn('attach ev fail', ev, e); }
     });
   }
 
-  async function initJitsi(showUI=true){
-    // destroy existing if present
+  // ensure filmstrip is hidden - call a few times to make it stick
+  function ensureHideFilmstrip(apiInstance){
     try {
-      if (api && api.dispose) {
-        try { api.dispose(); } catch(e){ console.warn('dispose', e); }
-      }
+      // attempt a few times with delays (helps if UI isn't ready immediately)
+      [0, 600, 1500].forEach((delay,i) => {
+        setTimeout(()=> {
+          try {
+            apiInstance.executeCommand('toggleFilmStrip'); // will hide if visible
+            appendLog('toggleFilmStrip called (attempt ' + (i+1) + ')');
+          } catch(err){
+            appendLog('toggleFilmStrip error: '+err);
+          }
+        }, delay);
+      });
+      // also hide any visible toolbar by hiding the container visually (best-effort)
+      setTimeout(()=> {
+        try {
+          const parent = document.getElementById('jaas');
+          if (parent) parent.style.background = '#000'; // black background
+        } catch(e){}
+      }, 300);
     } catch(e){ console.warn(e); }
-    document.getElementById('jaas').innerHTML = ''; // wipe
+  }
+
+  // init without re-creating if already exists (keeps connection alive)
+  async function initJitsi(){
+    if (api) {
+      appendLog('Viewer already initialized. Skipping re-create.');
+      return;
+    }
 
     const ROOM = roomInput.value.trim();
     const JWT = (jwtInput.value||'').trim();
-    appendLog('Initializing Jitsi — ROOM=' + ROOM + ' — JWT present=' + (!!JWT) + ' — showUI=' + showUI);
+    appendLog('Initializing Jitsi — ROOM=' + ROOM + ' — JWT present=' + (!!JWT));
 
     const options = {
       roomName: ROOM,
       parentNode: document.getElementById('jaas'),
-      userInfo: { displayName: 'Viewer-Debug-' + Math.floor(Math.random()*999) },
+      userInfo: { displayName: 'Viewer' },
       configOverwrite: {
         prejoinPageEnabled: false,
         startWithAudioMuted: true,
@@ -139,10 +185,16 @@
         disableDeepLinking: true
       },
       interfaceConfigOverwrite: {
-        TOOLBAR_BUTTONS: showUI ? undefined : [], // undefined = show standard toolbar, [] = hide
-        SHOW_JITSI_WATERMARK: showUI,
-        SHOW_BRAND_WATERMARK: showUI,
-        SHOW_POWERED_BY: showUI
+        TOOLBAR_BUTTONS: [],              // hide toolbar completely
+        SHOW_JITSI_WATERMARK: false,
+        SHOW_BRAND_WATERMARK: false,
+        SHOW_POWERED_BY: false,
+        SHOW_CHROME_EXTENSION_BANNER: false,
+        SHOW_DEEP_LINKING_IMAGE: false,
+        SHOW_WATERMARK_FOR_GUESTS: false,
+        VIDEO_LAYOUT_FIT: 'both',
+        filmStripOnly: false,
+        SHOW_PARTICIPANT_NAME: false
       },
       width: '100%', height: '100%'
     };
@@ -153,20 +205,30 @@
       window.__debugApi = api;
       appendLog('External API created OK');
       attachCommonHandlers(api);
-      // try to get participants periodically
+
       api.addEventListener('videoConferenceJoined', () => {
         joined = true;
         appendLog('videoConferenceJoined: joined=true');
-        getParticipants();
+        // black background & hide filmstrip
+        const jaas = document.getElementById('jaas');
+        if (jaas) jaas.style.background = '#000';
+        ensureHideFilmstrip(api);
+        // show our tiny overlay controls
+        const vc = document.getElementById('viewerControls');
+        if (vc) vc.style.display = 'flex';
+        setTimeout(getParticipants, 900);
       });
+
       api.addEventListener('videoConferenceLeft', () => {
         joined = false;
         appendLog('videoConferenceLeft');
+        const vc = document.getElementById('viewerControls');
+        if (vc) vc.style.display = 'none';
       });
-      // initial fetch after small delay
-      setTimeout(getParticipants, 900);
-      // periodic refresh to see state
+
+      // periodic refresh to keep debug panel updated
       setInterval(()=>{ if(api) getParticipants(); }, 2500);
+
     } catch (err){
       appendLog('ERROR creating ExternalAPI: ' + err);
       console.error(err);
@@ -174,14 +236,34 @@
     }
   }
 
-  // buttons
-  document.getElementById('btnReinitShow').addEventListener('click', ()=> initJitsi(true));
-  document.getElementById('btnReinitHide').addEventListener('click', ()=> initJitsi(false));
-  document.getElementById('btnRefresh').addEventListener('click', ()=> getParticipants());
+  // fullscreen helper
+  function toggleFullscreen() {
+    const elem = document.getElementById('jaas');
+    if (!document.fullscreenElement) {
+      elem.requestFullscreen().catch(err => appendLog('Fullscreen error: '+err));
+    } else {
+      document.exitFullscreen().catch(err => appendLog('Exit fullscreen error: '+err));
+    }
+  }
+
+  // small controls
+  document.getElementById('btnInit').addEventListener('click', ()=> initJitsi());
+  document.getElementById('btnFullscreen').addEventListener('click', ()=> toggleFullscreen());
+  document.getElementById('btnUnhide').addEventListener('click', ()=> {
+    // unhide - show the iframe UI temporarily (we intentionally don't re-create)
+    appendLog('Unhide request: showing Jitsi UI (note: toolbar still hidden by config).');
+    // remove our overlay (we only used overlay controls, not overlaying the iframe)
+    const vc = document.getElementById('viewerControls');
+    if (vc) vc.style.display = 'flex';
+    // we don't recreate API, so nothing else to do
+  });
+
+  // Pin first remote participant
   document.getElementById('btnPinFirst').addEventListener('click', async ()=>{
     if(!api){ appendLog('no api'); return; }
     const list = await getParticipants() || [];
     for(const p of list){
+      // participant payload formats vary; try multiple id fields
       const pid = p.participantId || p.id || p.participant;
       if(pid && pid !== api.getCurrentUserID()){
         try { api.executeCommand('setTileView', false); api.executeCommand('pinParticipant', pid); appendLog('Pinned: ' + pid); return; } catch(e){ appendLog('pin failed: '+e); }
@@ -190,6 +272,17 @@
     appendLog('No remote participant to pin.');
   });
 
+  // Mute toggle
+  document.getElementById('btnMute').addEventListener('click', ()=>{
+    if(!api){ appendLog('no api'); return; }
+    try {
+      lastMuteState = !lastMuteState;
+      api.executeCommand(lastMuteState ? 'muteAudio' : 'unmuteAudio');
+      appendLog('Audio ' + (lastMuteState ? 'muted' : 'unmuted'));
+    } catch(e){ appendLog('mute toggle error: ' + e); }
+  });
+
+  // Dump participants to console
   document.getElementById('btnDump').addEventListener('click', async ()=>{
     if(!api) { appendLog('no api'); return; }
     try {
@@ -200,13 +293,15 @@
     } catch(e){ appendLog('dump failed '+e); }
   });
 
-  // initialize with visible UI by default
-  initJitsi(true);
+  // viewer small overlay buttons (right top of jaas)
+  document.getElementById('btnFullscreen').addEventListener('click', toggleFullscreen);
+  // show controls only after init (see joined handler)
 
-  // expose helpers on window for quick console checks
-  window.__viewerDebug = {
-    getParticipants, initJitsi, apiRef: ()=> api
-  };
+  // auto-init on load? not automatically; user clicks "Init Viewer"
+  appendLog('Viewer ready. Click "Init Viewer" to join.');
+
+  // Expose for debug
+  window.__viewerDebug = { initJitsi, getParticipants, apiRef: ()=>api, ensureHideFilmstrip };
 
 })();
 </script>
