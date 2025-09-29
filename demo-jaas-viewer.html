@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Jitsi — Only Fullscreen</title>
+    <script src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/external_api.js" async></script>
+    <style>
+      html, body, #jaas-container { height: 100%; margin: 0; }
+      /* Floating fallback fullscreen button (visible if built-in button isn't available) */
+      #fullscreen-fallback {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        z-index: 99999;
+        background: rgba(0,0,0,0.6);
+        color: #fff;
+        border: none;
+        padding: 10px 14px;
+        font-size: 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: none; /* show only when needed */
+      }
+      /* If Jitsi still shows a toolbox, make sure it only contains the fullscreen button.
+         This is a gentle fallback — if the host forces buttons, the server may override. */
+      #jaas-container .toolbox {
+        /* keep toolbox visible (so built-in fullscreen can remain) but prevent overflow */
+        pointer-events: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="jaas-container"></div>
+    <button id="fullscreen-fallback" aria-label="Fullscreen (fallback)">⤢ Fullscreen</button>
+
+    <script type="text/javascript">
+      // Configuration - paste your JWT/room etc.
+      const jwt = "eyJraWQiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkvNjM4ODg2LVNBTVBMRV9BUFAiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJqaXRzaSIsImlzcyI6ImNoYXQiLCJpYXQiOjE3NTkxMzkxMjMsImV4cCI6MTc1OTE0NjMyMywibmJmIjoxNzU5MTM5MTE4LCJzdWIiOiJ2cGFhcy1tYWdpYy1jb29raWUtNDViMTRjMDI5YzFlNDM2OTg2MzRhMGFkMGQwODM4YTkiLCJjb250ZXh0Ijp7ImZlYXR1cmVzIjp7ImxpdmVzdHJlYW1pbmciOnRydWUsImZpbGUtdXBsb2FkIjp0cnVlLCJvdXRib3VuZC1jYWxsIjp0cnVlLCJzaXAtb3V0Ym91bmQtY2FsbCI6ZmFsc2UsInRyYW5zY3JpcHRpb24iOnRydWUsImxpc3QtdmlzaXRvcnMiOmZhbHNlLCJyZWNvcmRpbmciOnRydWUsImZsaXAiOmZhbHNlfSwidXNlciI6eyJoaWRkZW4tZnJvbS1yZWNvcmRlciI6ZmFsc2UsIm1vZGVyYXRvciI6ZmFsc2UsIm5hbWUiOiJBeXVzaE1vZCIsImlkIjoiZ29vZ2xlLW9hdXRoMnwxMDM5OTM3NzA1ODk0NjI1NjQ4OTciLCJhdmF0YXIiOiIiLCJlbWFpbCI6ImhleXlpdHNtZXdhc2ltQGdtYWlsLmNvbSJ9fSwicm9vbSI6IioifQ.cJWQAKv5L2DHxht1nBPQKtbA5X11a_mOeYcfkYn17uwKLJy1N__bLuqNvO4rxue3bGI48vsLVxMxYN0FgqZ-ae1G6aKiiYitpq2IkEeG1uvRyy8BHMAYfitu3rh-Uwbftg4j7XoqDlereXjCbg9C4n__0lIsCd8Z2aOXIGdnsXvSEZ3HG2vkIqC7lXrFGGUO-jipoBjiadUpvi5F8zUZA3UhM0_pzKVc1gBT5aMLOnQb9XNT51ys4xeZF47U9p5p-yDSKq0UzO7QZfD4bXv4pTDHrR7mcgzCFLLKiaqzG8a88JtnTz4nzGtPMtP6Kl8mFWYWIcrUD1qOzqmYsUPUQw";
+
+      window.onload = () => {
+        const domain = "8x8.vc";
+        const options = {
+          roomName: "vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/Ayush37299",
+          parentNode: document.querySelector('#jaas-container'),
+          jwt,
+          configOverwrite: {
+            prejoinPageEnabled: false,
+            disableInitialGUM: true,
+            startWithAudioMuted: true,
+            startWithVideoMuted: true,
+            // best-effort filmstrip hide (may need toggle below)
+            filmstrip: { disabled: true }
+          },
+          // primary method: request the toolbar to only include fullscreen
+          interfaceConfigOverwrite: {
+            TOOLBAR_BUTTONS: ['fullscreen'],
+            DEFAULT_BACKGROUND: "#336699",
+            VERTICAL_FILMSTRIP: false
+          }
+        };
+
+        const api = new JitsiMeetExternalAPI(domain, options);
+
+        // Hide filmstrip on join (extra attempt)
+        api.addEventListener('videoConferenceJoined', () => {
+          try {
+            api.executeCommand('toggleFilmStrip');
+          } catch (e) {
+            console.warn("toggleFilmStrip command failed:", e);
+          }
+
+          // Check whether the internal fullscreen button exists. If not, show fallback button.
+          setTimeout(() => {
+            const builtInFS = document.querySelector('#jaas-container .toolbox [data-id="fullscreen"]') ||
+                              document.querySelector('#jaas-container .toolbox [aria-label*="Full"]') ||
+                              document.querySelector('#jaas-container .toolbox .fullscreen');
+            if (!builtInFS) {
+              // show fallback
+              document.getElementById('fullscreen-fallback').style.display = 'block';
+            } else {
+              // If built-in fullscreen present, hide the fallback (in case it was visible)
+              document.getElementById('fullscreen-fallback').style.display = 'none';
+            }
+          }, 800);
+        });
+
+        // Fallback button behavior
+        const fallbackBtn = document.getElementById('fullscreen-fallback');
+        fallbackBtn.addEventListener('click', () => {
+          try {
+            api.executeCommand('toggleFullscreen');
+          } catch (e) {
+            // As a last resort, try to request browser fullscreen for the container
+            const el = document.getElementById('jaas-container');
+            if (el.requestFullscreen) el.requestFullscreen();
+            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+            else console.warn('Fullscreen not available:', e);
+          }
+        });
+
+        // Extra defensive CSS removal: hide any toolbar buttons not labeled fullscreen (best-effort)
+        // NOTE: hosts may override CSS; this is a gentle attempt.
+        setTimeout(() => {
+          const toolbox = document.querySelector('#jaas-container .toolbox');
+          if (toolbox) {
+            const children = Array.from(toolbox.querySelectorAll('button, a'));
+            children.forEach(btn => {
+              const label = (btn.getAttribute('aria-label') || btn.title || '').toLowerCase();
+              const id = (btn.id || '').toLowerCase();
+              if (!label.includes('full') && !id.includes('full')) {
+                btn.style.display = 'none';
+              } else {
+                btn.style.display = ''; // keep fullscreen-like buttons visible
+              }
+            });
+          } else {
+            // if no toolbox found, show fallback button
+            document.getElementById('fullscreen-fallback').style.display = 'block';
+          }
+        }, 1000);
+      };
+    </script>
+  </body>
+</html>
