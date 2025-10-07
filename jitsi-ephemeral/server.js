@@ -11,7 +11,7 @@ app.use(helmet());
 const PORT = process.env.PORT || 3000;
 const EPHEMERAL_TTL = 90; // seconds
 const JOIN_PREFIX = 'join:';
-const ALLOWED_ORIGINS = ['https://your-site.com']; // replace with your domain
+const ALLOWED_ORIGINS = ['https://oor-islive.onrender.com']; // replace with your domain
 
 // Upstash REST credentials
 const UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL || "https://active-marmoset-8778.upstash.io";
