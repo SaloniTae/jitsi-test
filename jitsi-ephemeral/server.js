@@ -7,15 +7,14 @@ app.use(express.json());
 const REDIS_URL = "https://active-marmoset-8778.upstash.io";
 const REDIS_TOKEN = "ASJKAAImcDI0Mjc0NjZhMzJlODY0OWRiODc0OWUwODEwMTU2N2Q4ZnAyODc3OA";
 
-const TTL = 3600; // seconds (1 hour for example)
+const TTL = 3600; // seconds (1 hour)
 
-// Generate persistent token
+// Generate reusable token
 app.post('/api/request-join', async (req,res)=>{
   try {
     const room = req.body.room || "AyushLive";
     const jti = Math.random().toString(36).substr(2,16);
 
-    // Store token in Redis (will expire automatically after TTL)
     await fetch(`${REDIS_URL}/set/${jti}`, {
       method: 'POST',
       headers: {
@@ -32,7 +31,7 @@ app.post('/api/request-join', async (req,res)=>{
   }
 });
 
-// Serve join page (room hidden, token reusable)
+// Serve join page (room hidden)
 app.get('/join/:jti', async (req,res)=>{
   try {
     const jti = req.params.jti;
@@ -42,7 +41,6 @@ app.get('/join/:jti', async (req,res)=>{
 
     if(!roomData || !roomData.result) return res.status(401).send("Unauthorized or expired token");
 
-    // Correctly read the room string
     const room = typeof roomData.result === 'string' ? roomData.result : roomData.result.value;
 
     // Do NOT delete token → reusable
