@@ -2,151 +2,296 @@
 <html>
 <head>
 <meta charset="utf-8"/>
-<title>Viewer — Protected embed (active lock)</title>
+<title>Viewer — Black background (auto-join, fullscreen landscape mobile, auto-pin screenshare)</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
+<!-- JaaS external_api.js -->
+<script src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/external_api.js"></script>
 <style>
   :root { --bg:#000; --text:#e6f0f3; }
   html,body{height:100%; margin:0; font-family:system-ui,Arial,Helvetica,sans-serif; background:var(--bg); color:var(--text); overflow:hidden;}
   #jaas {height:100vh; background:var(--bg); position:relative; overflow:hidden; width:100vw;}
   .viewer-controls { position:absolute; right:12px; top:12px; z-index:9999; display:none; gap:8px; align-items:center; }
   .viewer-controls button { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.06); padding:8px 10px; color:var(--text); border-radius:6px; cursor:pointer; font-size:13px; }
-  #status { position:absolute; left:12px; top:12px; z-index:9999; font-size:13px; color: #9fb2b8; }
-  #meetFrame { width:100%; height:100vh; border:0; display:block; background:var(--bg); }
+  .force-landscape {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    width: 100vh !important;
+    height: 100vw !important;
+    transform-origin: center center !important;
+    transform: translate(-50%, -50%) rotate(90deg) !important;
+    z-index: 99999 !important;
+    background: var(--bg) !important;
+    overflow: hidden !important;
+  }
 </style>
 </head>
 <body>
   <div id="jaas" aria-label="meeting">
-    <div id="status">Connecting…</div>
     <div class="viewer-controls" id="viewerControls">
       <button id="btnFullscreen">Fullscreen</button>
     </div>
   </div>
 
 <script>
-(function(){
-  // CONFIG
-  const ROOM = "AyushLive";
-  const SERVICE_BASE = ""; // empty means same origin (served from same server)
-  const REQUEST_JOIN_PATH = '/api/request-join';
-  const HEARTBEAT_PATH = '/api/heartbeat';
-  const LEAVE_PATH = '/api/leave';
+(function () {
+  /* ========= CONFIG (only new bits) ========= */
+  const SERVICE_BASE = "https://oor-islive.onrender.com";               // your Node service
+  const APP_ID       = "vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9";
 
-  const HEARTBEAT_INTERVAL = 20 * 1000; // ms (must match server HEARTBEAT_INTERVAL)
-  const STATUS = document.getElementById('status');
-  const viewerControls = document.getElementById('viewerControls');
-  let currentJti = null;
-  let heartbeatTimer = null;
-  let iframe = null;
+  /* will be replaced after server call; start with fallback */
+  let ROOM = `${APP_ID}/AyushLive`;
+  let JWT  = "";
 
-  function setStatus(t) { if (STATUS) STATUS.textContent = t; }
+  const DOMAIN = "8x8.vc";
 
-  // request ephemeral join URL and embed it
-  async function requestAndEmbed() {
-    setStatus('Requesting secure join URL…');
+  /* ========= STATE ========= */
+  let api = null;
+  let isForcingLandscapeViaCSS = false;
+
+  /* ========= HELPERS (full original versions) ========= */
+  function isMobileOrTouchSmall() {
     try {
-      const resp = await fetch(REQUEST_JOIN_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ room: ROOM })
-      });
-      if (!resp.ok) {
-        const txt = await resp.text().catch(()=>null);
-        console.error('request failed', resp.status, txt);
-        setStatus('Failed to get join link');
-        return;
+      const hasTouch   = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+      const smallWidth = window.innerWidth <= 900;       // tweak if desired
+      return hasTouch && smallWidth;
+    } catch (e) { return false; }
+  }
+
+  function ensureHideFilmstrip(apiInstance){
+    try {
+      setTimeout(()=> {
+        try { apiInstance.executeCommand('toggleFilmStrip'); } catch(e) { /* ignore */ }
+      }, 300);
+    } catch(e){ /* ignore */ }
+  }
+
+  /* ---------- orientation helpers (unchanged) ---------- */
+  function tryLockOrientation(orientation) {
+    if (!orientation) return Promise.reject('No orientation API');
+    if (screen.orientation && typeof screen.orientation.lock === 'function') {
+      return screen.orientation.lock(orientation);
+    }
+    const maybeLock = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation;
+    if (typeof maybeLock === 'function') {
+      try {
+        const ok = maybeLock.call(screen, orientation);
+        return (ok && typeof ok.then === 'function') ? ok : Promise.resolve(ok);
+      } catch (e) { return Promise.reject(e); }
+    }
+    return Promise.reject('Orientation lock not supported');
+  }
+
+  function tryUnlockOrientation(){
+    try {
+      if (screen.orientation && typeof screen.orientation.unlock === 'function') {
+        screen.orientation.unlock();
+      } else if (screen.unlockOrientation) {
+        screen.unlockOrientation();
+      } else if (screen.mozUnlockOrientation) {
+        screen.mozUnlockOrientation();
+      } else if (screen.msUnlockOrientation) {
+        screen.msUnlockOrientation();
       }
-      const data = await resp.json();
-      if (!data || !data.joinUrl) { setStatus('Invalid response'); return; }
-      // joinUrl is absolute; extract jti
-      const url = new URL(data.joinUrl, window.location.origin);
-      currentJti = url.pathname.split('/').pop();
-
-      embedJoinUrl(data.joinUrl);
-      startHeartbeat();
-    } catch (e) {
-      console.error('requestAndEmbed error', e);
-      setStatus('Network error');
-      setTimeout(requestAndEmbed, 3000);
-    }
+    } catch(e){ /* ignore */ }
   }
 
-  function embedJoinUrl(joinUrl) {
-    setStatus('Embedding meeting…');
+  function applyCssLandscapeFallback(){
+    if (!isMobileOrTouchSmall()) return;
+    if (isForcingLandscapeViaCSS) return;
     const jaas = document.getElementById('jaas');
-    jaas.innerHTML = '';
-    iframe = document.createElement('iframe');
-    iframe.id = 'meetFrame';
-    iframe.src = joinUrl;
-    iframe.allow = 'camera; microphone; fullscreen';
-    iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups';
-    jaas.appendChild(iframe);
-    if (viewerControls) viewerControls.style.display = 'flex';
-    setStatus('');
+    if (!jaas) return;
+    document.body.style.overflow = 'hidden';
+    jaas.classList.add('force-landscape');
+    isForcingLandscapeViaCSS = true;
   }
 
-  // heartbeat pings to keep link active
-  async function heartbeatPing() {
-    if (!currentJti) return;
-    try {
-      await fetch(HEARTBEAT_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ jti: currentJti })
-      });
-      // no UI change needed if ok
-    } catch (e) {
-      console.warn('heartbeat failed', e);
-    }
+  function removeCssLandscapeFallback(){
+    if (!isForcingLandscapeViaCSS) return;
+    const jaas = document.getElementById('jaas');
+    if (!jaas) return;
+    jaas.classList.remove('force-landscape');
+    document.body.style.overflow = '';
+    isForcingLandscapeViaCSS = false;
   }
 
-  function startHeartbeat() {
-    stopHeartbeat();
-    heartbeatTimer = setInterval(heartbeatPing, HEARTBEAT_INTERVAL);
-    // send first immediately
-    heartbeatPing();
-  }
-  function stopHeartbeat() {
-    if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
-  }
-
-  // explicit leave to free the link
-  async function sendLeave() {
-    if (!currentJti) return;
-    try {
-      await fetch(LEAVE_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ jti: currentJti })
-      });
-    } catch (e) { /* ignore */ }
-  }
-
-  // Attempt to gracefully release on page unload
-  window.addEventListener('beforeunload', function(e) {
-    // best-effort synchronous fetch is not reliable; we call navigator.sendBeacon if available
-    if (currentJti && navigator.sendBeacon) {
-      const payload = JSON.stringify({ jti: currentJti });
-      navigator.sendBeacon(LEAVE_PATH, payload);
-    } else {
-      // fallback: attempt fetch but may not complete
-      sendLeave();
-    }
-    stopHeartbeat();
-  });
-
-  // wire fullscreen
-  document.getElementById('btnFullscreen').addEventListener('click', () => {
+  async function enterFullscreenAndLandscape(){
     const el = document.getElementById('jaas');
-    if (el.requestFullscreen) el.requestFullscreen().catch(()=>{});
-    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen().catch(()=>{});
-  });
+    if (!el) return;
 
-  // boot
-  window.addEventListener('load', () => {
-    requestAndEmbed();
+    try {
+      if (el.requestFullscreen)           await el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+      else if (el.msRequestFullscreen)     await el.msRequestFullscreen();
+    } catch(e) { /* ignore */ }
+
+    try {
+      await tryLockOrientation('landscape');
+      removeCssLandscapeFallback();
+    } catch (err) {
+      applyCssLandscapeFallback();
+    }
+  }
+
+  async function exitFullscreenAndRestore(){
+    try {
+      if (document.exitFullscreen)           await document.exitFullscreen();
+      else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
+      else if (document.msExitFullscreen)     await document.msExitFullscreen();
+    } catch(e){ /* ignore */ }
+
+    tryUnlockOrientation();
+    removeCssLandscapeFallback();
+  }
+
+  function toggleFullscreen(){
+    const isFull = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+    if (!isFull) enterFullscreenAndLandscape(); else exitFullscreenAndRestore();
+  }
+
+  function onFullScreenChange(){
+    const isFull = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+    if (!isFull) {
+      tryUnlockOrientation();
+      removeCssLandscapeFallback();
+    }
+  }
+
+  document.addEventListener('fullscreenchange',        onFullScreenChange);
+  document.addEventListener('webkitfullscreenchange',  onFullScreenChange);
+  document.addEventListener('msfullscreenchange',      onFullScreenChange);
+
+  /* ========= ORIGINAL JITSI BOOT LOGIC (unchanged) ========= */
+  function initJitsi(){
+    if (api) return;
+
+    const options = {
+      roomName: ROOM,
+      parentNode: document.getElementById('jaas'),
+      userInfo: { displayName: 'Viewer' },
+      configOverwrite: {
+        prejoinPageEnabled: false,
+        prejoinConfig: { enabled: false },
+        disableInitialGUM: true,
+        startWithAudioMuted: true,
+        startWithVideoMuted: true,
+        filmstrip: { disabled: true },
+        desktopSharingFrameRate: { min: 15, max: 30 }
+      },
+      interfaceConfigOverwrite: {
+        TOOLBAR_BUTTONS: [],
+        SHOW_JITSI_WATERMARK: false,
+        SHOW_BRAND_WATERMARK: false,
+        SHOW_POWERED_BY: false,
+        SHOW_CHROME_EXTENSION_BANNER: false,
+        SHOW_DEEP_LINKING_IMAGE: false,
+        SHOW_WATERMARK_FOR_GUESTS: false,
+        VIDEO_LAYOUT_FIT: 'both',
+        filmStripOnly: false,
+        SHOW_PARTICIPANT_NAME: false,
+        DISABLE_VIDEO_BACKGROUND: true
+      },
+      width: '100%',
+      height: '100%'
+    };
+
+    if (JWT) options.jwt = JWT;
+
+    try {
+      api = new JitsiMeetExternalAPI(DOMAIN, options);
+
+      api.addEventListener('videoConferenceJoined', async () => {
+        const jaas = document.getElementById('jaas');
+        if (jaas) jaas.style.background = '#000';
+        ensureHideFilmstrip(api);
+        const vc = document.getElementById('viewerControls');
+        if (vc) vc.style.display = 'flex';
+
+        /* auto-pin screenshare if present */
+        try {
+          const info = api.getParticipantsInfo && api.getParticipantsInfo();
+          const list = (info && typeof info.then === 'function') ? await info : info;
+
+          if (Array.isArray(list)) {
+            const sharer = list.find(p =>
+              p.isSharingScreen || p.videoType === 'desktop' || p.videoType === 'screen' ||
+              p.screen || p.screenShare);
+
+            if (sharer) {
+              const pid = sharer.participantId || sharer.id || sharer.participant;
+              if (pid && api.getCurrentUserID && pid !== api.getCurrentUserID()) {
+                try {
+                  api.executeCommand('setTileView', false);
+                  api.executeCommand('pinParticipant', pid);
+                } catch(e){}
+              }
+            }
+          }
+        } catch(e){ /* ignore */ }
+      });
+
+      api.addEventListener('videoConferenceLeft', () => {
+        const vc = document.getElementById('viewerControls');
+        if (vc) vc.style.display = 'none';
+      });
+
+      const pinIfSharing = async () => {
+        try {
+          const info = api.getParticipantsInfo && api.getParticipantsInfo();
+          const list = (info && typeof info.then === 'function') ? await info : info;
+          if (Array.isArray(list)) {
+            const sharer = list.find(p =>
+              p.isSharingScreen || p.videoType === 'desktop' || p.videoType === 'screen' ||
+              p.screen || p.screenShare);
+
+            if (sharer) {
+              const pid = sharer.participantId || sharer.id || sharer.participant;
+              if (pid && api.getCurrentUserID && pid !== api.getCurrentUserID()) {
+                try {
+                  api.executeCommand('setTileView', false);
+                  api.executeCommand('pinParticipant', pid);
+                } catch(e){}
+              }
+            }
+          }
+        } catch(e){ /* ignore */ }
+      };
+
+      api.addEventListener('screenSharingStatusChanged', pinIfSharing);
+      api.addEventListener('participantJoined',          pinIfSharing);
+
+    } catch (err) {
+      console.error('ExternalAPI create error', err);
+      api = null;
+    }
+  }
+
+  /* ========= NEW: fetch token/room from server ========= */
+  async function requestRoomFromServer(){
+    try {
+      const r = await fetch(`${SERVICE_BASE.replace(/\/$/,'')}/api/request-join`, {
+        method : 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body   : JSON.stringify({})
+      });
+
+      if (!r.ok) { console.warn('request-join failed', r.status); return; }
+
+      const data = await r.json();
+      if (data && data.room) ROOM = `${APP_ID}/${data.room}`;
+      if (data && data.jwt)  JWT  = data.jwt;
+    } catch(err){
+      console.warn('Could not reach server, using fallback room');
+    }
+  }
+
+  /* ========= BOOT ======== */
+  window.addEventListener('load', async () => {
+    await requestRoomFromServer();
+    initJitsi();
+
+    const fsBtn = document.getElementById('btnFullscreen');
+    if (fsBtn) fsBtn.addEventListener('click', toggleFullscreen);
   });
 
 })();
