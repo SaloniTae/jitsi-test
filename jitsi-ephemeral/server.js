@@ -1,18 +1,23 @@
-// server.js
+// server.js (fixed)
+// Run: node server.js
+
 const express = require('express');
 const fetch = require('node-fetch');
 const app = express();
 app.use(express.json());
+const fs = require('fs');
 
-// Upstash Redis config (same as you gave earlier — replace with env vars if desired)
+// Upstash Redis config (use env vars in production)
 const REDIS_URL = process.env.REDIS_URL || "https://active-marmoset-8778.upstash.io";
 const REDIS_TOKEN = process.env.REDIS_TOKEN || "ASJKAAImcDI0Mjc0NjZhMzJlODY0OWRiODc0OWUwODEwMTU2N2Q4ZnAyODc3OA";
 
 const TTL = 90; // seconds (ephemeral)
 
-// ---------- viewer HTML (served at /viewer) ----------
-// NOTE: occurrences of ${...} inside this string are intentionally escaped as \${...}
-// so they remain literal in the served page's JS (the page itself will use them).
+/**
+ * viewerHtml: served at GET /viewer
+ * IMPORTANT: the JS inside this HTML DOES NOT use backtick-template literals,
+ * so it won't accidentally close the server-side template literal.
+ */
 const viewerHtml = `<!doctype html>
 <html>
 <head>
@@ -54,23 +59,21 @@ const viewerHtml = `<!doctype html>
 <script>
 (function () {
   /* ========== CONFIG ========== */
-  const SERVICE_BASE = "https://oor-islive.onrender.com"; // your Node service
-  const APP_ID = "vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9";
-  const DOMAIN = "8x8.vc";
-  const FALLBACK_ROOM = "AyushLive"; // used only if server call fails
+  var SERVICE_BASE = "https://oor-islive.onrender.com"; // must match where /api/request-join & /join/:jti live
+  var APP_ID = "vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9";
+  var DOMAIN = "8x8.vc";
+  var FALLBACK_ROOM = "AyushLive"; // used only if server call fails
   /* ============================ */
 
-  const frameWrap = document.getElementById('frameWrap');
-  const viewerFrame = document.getElementById('viewerFrame');
-  const statusEl = document.getElementById('status');
-  const controls = document.getElementById('viewerControls');
-
-  let isForcingLandscapeViaCSS = false;
+  var frameWrap = document.getElementById('frameWrap');
+  var viewerFrame = document.getElementById('viewerFrame');
+  var statusEl = document.getElementById('status');
+  var controls = document.getElementById('viewerControls');
 
   function isMobileOrTouchSmall() {
     try {
-      const hasTouch   = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
-      const smallWidth = window.innerWidth <= 900;
+      var hasTouch   = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+      var smallWidth = window.innerWidth <= 900;
       return hasTouch && smallWidth;
     } catch (e) { return false; }
   }
@@ -80,10 +83,10 @@ const viewerHtml = `<!doctype html>
     if (screen.orientation && typeof screen.orientation.lock === 'function') {
       return screen.orientation.lock(orientation);
     }
-    const maybeLock = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation;
+    var maybeLock = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation;
     if (typeof maybeLock === 'function') {
       try {
-        const ok = maybeLock.call(screen, orientation);
+        var ok = maybeLock.call(screen, orientation);
         return (ok && typeof ok.then === 'function') ? ok : Promise.resolve(ok);
       } catch (e) { return Promise.reject(e); }
     }
@@ -106,27 +109,22 @@ const viewerHtml = `<!doctype html>
 
   function applyCssLandscapeFallback(){
     if (!isMobileOrTouchSmall()) return;
-    if (isForcingLandscapeViaCSS) return;
-    const jaas = frameWrap;
+    var jaas = frameWrap;
     if (!jaas) return;
     document.body.style.overflow = 'hidden';
     jaas.classList.add('force-landscape');
-    isForcingLandscapeViaCSS = true;
   }
 
   function removeCssLandscapeFallback(){
-    if (!isForcingLandscapeViaCSS) return;
-    const jaas = frameWrap;
+    var jaas = frameWrap;
     if (!jaas) return;
     jaas.classList.remove('force-landscape');
     document.body.style.overflow = '';
-    isForcingLandscapeViaCSS = false;
   }
 
   async function enterFullscreenAndLandscape(){
-    const el = frameWrap;
+    var el = frameWrap;
     if (!el) return;
-
     try {
       if (el.requestFullscreen)           await el.requestFullscreen();
       else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
@@ -147,26 +145,25 @@ const viewerHtml = `<!doctype html>
       else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
       else if (document.msExitFullscreen)     await document.msExitFullscreen();
     } catch(e){ /* ignore */ }
-
     tryUnlockOrientation();
     removeCssLandscapeFallback();
   }
 
   function toggleFullscreen(){
-    const isFull = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+    var isFull = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
     if (!isFull) enterFullscreenAndLandscape(); else exitFullscreenAndRestore();
   }
 
-  document.addEventListener('fullscreenchange',        () => { if (!document.fullscreenElement) tryUnlockOrientation(); });
-  document.addEventListener('webkitfullscreenchange',  () => { if (!document.webkitFullscreenElement) tryUnlockOrientation(); });
-  document.addEventListener('msfullscreenchange',      () => { if (!document.msFullscreenElement) tryUnlockOrientation(); });
+  document.addEventListener('fullscreenchange',        function(){ if (!document.fullscreenElement) tryUnlockOrientation(); });
+  document.addEventListener('webkitfullscreenchange',  function(){ if (!document.webkitFullscreenElement) tryUnlockOrientation(); });
+  document.addEventListener('msfullscreenchange',      function(){ if (!document.msFullscreenElement) tryUnlockOrientation(); });
 
   /* ========== Create viewer jti and embed (same flow as /join/:jti) ========== */
   async function createViewerJtiAndEmbed() {
     statusEl.textContent = 'Requesting ephemeral viewer link…';
-
     try {
-      const r = await fetch(\`\${SERVICE_BASE.replace(/\\/?$/,'')}/api/request-join\`, {
+      var url = SERVICE_BASE.replace(/\\/?$/,'') + '/api/request-join';
+      var r = await fetch(url, {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({})
@@ -174,10 +171,10 @@ const viewerHtml = `<!doctype html>
 
       if (!r.ok) throw new Error('request failed ' + r.status);
 
-      const data = await r.json();
+      var data = await r.json();
 
       // server returns { joinUrl: "/join/<jti>", ttl }
-      let joinUrl = null;
+      var joinUrl = null;
       if (data && data.joinUrl) joinUrl = data.joinUrl;
       else if (data && data.jti) joinUrl = '/join/' + data.jti;
       else if (data && data.join) joinUrl = data.join;
@@ -185,8 +182,8 @@ const viewerHtml = `<!doctype html>
 
       if (!joinUrl) {
         if (data && data.room) {
-          const room = encodeURIComponent(String(data.room));
-          const src = \`https://\${DOMAIN}/\${APP_ID}/\${room}\`;
+          var room = encodeURIComponent(String(data.room));
+          var src = 'https://' + DOMAIN + '/' + APP_ID + '/' + room;
           viewerFrame.src = src;
           statusEl.textContent = 'Embedded direct room (server returned room).';
           controls.style.display = 'flex';
@@ -195,13 +192,13 @@ const viewerHtml = `<!doctype html>
         throw new Error('unexpected server response');
       }
 
-      const abs = (joinUrl.startsWith('http') ? joinUrl : (SERVICE_BASE.replace(/\\/?$/,'') + joinUrl));
+      var abs = (joinUrl.indexOf('http') === 0 ? joinUrl : (SERVICE_BASE.replace(/\\/?$/,'') + joinUrl));
       viewerFrame.src = abs;
       statusEl.textContent = 'Viewer link created — embedded ephemeral join page.';
       controls.style.display = 'flex';
     } catch (err) {
       console.warn('Could not create viewer jti:', err);
-      viewerFrame.src = \`https://\${DOMAIN}/\${APP_ID}/\${FALLBACK_ROOM}\`;
+      viewerFrame.src = 'https://' + DOMAIN + '/' + APP_ID + '/' + FALLBACK_ROOM;
       statusEl.textContent = 'Using fallback direct room (no ephemeral link).';
       controls.style.display = 'flex';
     }
@@ -210,14 +207,14 @@ const viewerHtml = `<!doctype html>
   async function reloadViewer() {
     viewerFrame.src = 'about:blank';
     statusEl.textContent = 'Recreating viewer link…';
-    await new Promise(r=>setTimeout(r,200));
+    await new Promise(function(r){ setTimeout(r,200); });
     await createViewerJtiAndEmbed();
   }
 
   document.getElementById('btnFullscreen').addEventListener('click', toggleFullscreen);
   document.getElementById('btnReload').addEventListener('click', reloadViewer);
 
-  window.addEventListener('load', async () => {
+  window.addEventListener('load', async function () {
     await createViewerJtiAndEmbed();
   });
 
@@ -226,13 +223,13 @@ const viewerHtml = `<!doctype html>
 </body>
 </html>`;
 
-// ---------- route: GET /viewer ----------
+/* ---------- route: GET /viewer ---------- */
 app.get('/viewer', (req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(viewerHtml);
 });
 
-// ---------- route: POST /api/request-join (ephemeral jti creation) ----------
+/* ---------- route: POST /api/request-join (ephemeral jti creation) ---------- */
 app.post('/api/request-join', async (req, res) => {
   try {
     // default room if none provided on client
@@ -240,36 +237,36 @@ app.post('/api/request-join', async (req, res) => {
     const jti = Math.random().toString(36).substr(2, 16);
 
     // Upstash set: set jti -> room with TTL (seconds)
-    const resp = await fetch(\`\${REDIS_URL}/set/\${jti}\`, {
+    const resp = await fetch(`${REDIS_URL}/set/${jti}`, {
       method: 'POST',
       headers: {
-        Authorization: \`Bearer \${REDIS_TOKEN}\`,
+        Authorization: `Bearer ${REDIS_TOKEN}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ value: room, ex: TTL })
     });
 
-    // best-effort: read response (not strictly necessary)
-    try { await resp.json(); } catch(e){ /* ignore parse */ }
+    // consume response (best-effort)
+    try { await resp.json(); } catch(e){ /* ignore parse errors */ }
 
-    // return the joinUrl (same shape your viewer expects)
-    return res.json({ joinUrl: `/join/\${jti}`, ttl: TTL, jti });
+    // return the joinUrl (same shape viewer expects)
+    return res.json({ joinUrl: `/join/${jti}`, ttl: TTL, jti });
   } catch (e) {
     console.error('request-join error', e);
     return res.status(500).json({ error: 'server_error' });
   }
 });
 
-// ---------- route: GET /join/:jti (serves the inner join page with Jitsi iframe) ----------
+/* ---------- route: GET /join/:jti (serves the inner join page with Jitsi iframe) ---------- */
 app.get('/join/:jti', async (req, res) => {
   try {
     const jti = req.params.jti;
     if (!jti) return res.status(400).send('Missing jti');
 
-    // fetch the stored room
-    const getResp = await fetch(\`\${REDIS_URL}/get/\${jti}\`, {
-      headers: { Authorization: \`Bearer \${REDIS_TOKEN}\` }
+    const getResp = await fetch(`${REDIS_URL}/get/${jti}`, {
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}` }
     });
+
     const roomData = await getResp.json().catch(()=>null);
 
     if (!roomData || !roomData.result) {
@@ -291,32 +288,31 @@ app.get('/join/:jti', async (req, res) => {
     room = String(room).trim();
 
     // delete the jti immediately (single-use)
-    await fetch(\`\${REDIS_URL}/del/\${jti}\`, {
+    await fetch(`${REDIS_URL}/del/${jti}`, {
       method: 'POST',
-      headers: { Authorization: \`Bearer \${REDIS_TOKEN}\` }
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}` }
     }).catch(()=>{});
 
     // serve the minimal inner page containing the 8x8 iframe
-    // THIS is the page that will produce the same network requests (conference-request/v1?room=...) you liked.
     const APP_ID = "vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9";
-    const safeRoom = encodeURIComponent(room); // encode for URL path
+    const safeRoom = encodeURIComponent(room);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(\`<!doctype html>
+    res.send(`<!doctype html>
 <html>
-  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>\${room}</title></head>
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${room}</title></head>
   <body style="margin:0; background:#000;">
-    <iframe src="https://8x8.vc/\${APP_ID}/\${safeRoom}"
+    <iframe src="https://8x8.vc/${APP_ID}/${safeRoom}"
             style="width:100vw; height:100vh; border:0; background:#000;"
             allow="camera; microphone; fullscreen; autoplay; display-capture">
     </iframe>
   </body>
-</html>\`);
+</html>`);
   } catch (e) {
     console.error('join error', e);
     res.status(500).send('Server error');
   }
 });
 
-// ---------- start server ----------
+/* ---------- start server ---------- */
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log('Server running on port', PORT));
