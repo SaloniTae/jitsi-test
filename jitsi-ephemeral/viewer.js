@@ -28,7 +28,7 @@
 </style>
 </head>
 <body>
-  <div id="config" data-room="ROOM_PLACEHOLDER" style="display:none;"></div>
+  <div id="config" data-room="Ayushh" style="display:none;"></div>
 
   <div id="jaas" aria-label="meeting">
     <div class="viewer-controls" id="viewerControls">
