@@ -1,104 +1,51 @@
-// server.js — persistent tokens with robust join-room parsing + debug logging
+// server-proxy.js — persistent tokens + provider proxy to hide room from client
+// Requires: npm i node-fetch http-proxy-middleware express cors
 const express = require('express');
-const fetch = require('node-fetch'); // remove if running node >= 18 and want global fetch
+const fetch = require('node-fetch'); // remove if node >=18 and you want global fetch
 const crypto = require('crypto');
 const cors = require('cors');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const app = express();
 app.use(express.json());
 
-// Enable CORS (set ALLOWED_ORIGINS in env for production)
+// CORS: configure in env for production
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : true
 }));
 
+// Upstash config (move to env in production)
 const REDIS_URL = process.env.UPSTASH_REST_URL || "https://active-marmoset-8778.upstash.io";
 const REDIS_TOKEN = process.env.UPSTASH_REST_TOKEN || "ASJKAAImcDI0Mjc0NjZhMzJlODY0OWRiODc0OWUwODEwMTU2N2Q4ZnAyODc3OA";
 
-function isValidRoomName(name) {
-  if (!name || typeof name !== 'string') return false;
-  // same rule as before: letters, digits, dot, underscore, colon, dash
-  return /^[A-Za-z0-9._:-]{1,80}$/.test(name);
-}
-function makeJti() {
-  return crypto.randomBytes(12).toString('hex');
-}
+// Provider base and provider path prefix (adjust to your provider)
+const PROVIDER_BASE = process.env.PROVIDER_BASE || 'https://8x8.vc';
+const PROVIDER_PATH_PREFIX = process.env.PROVIDER_PATH_PREFIX || 'vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9'; 
+// Example final provider URL becomes: https://8x8.vc/vpaas-magic-cookie-.../<room> and then provider's UI assets.
+
+// Helpers
+function makeJti(){ return crypto.randomBytes(12).toString('hex'); }
 function getServiceBaseUrl(req) {
   if (process.env.SERVICE_BASE) return process.env.SERVICE_BASE.replace(/\/$/, '');
   const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http');
   const host = req.get('x-forwarded-host') || req.get('host');
   return `${proto}://${host}`;
 }
-
-// Helper to robustly parse a room value returned from Upstash
-function normalizeRoomValue(raw) {
-  // raw may be: "AyushLive", '"AyushLive"', '["AyushLive"]', {"room":"AyushLive"} or even other JSON
-  if (raw == null) return null;
-
-  // If already string and looks fine, return trimmed
-  if (typeof raw === 'string') {
-    let s = raw.trim();
-
-    // If it looks like a JSON string with extra quotes, try to parse
-    // e.g. '"AyushLive"' -> "AyushLive"
-    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-      try {
-        const parsed = JSON.parse(s);
-        if (typeof parsed === 'string') return parsed;
-      } catch(e){
-        // fallback: strip quotes manually
-        s = s.slice(1, -1);
-      }
-    }
-
-    // If it's a JSON-like object/array string, try parse
-    if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
-      try {
-        const parsed = JSON.parse(s);
-        // If parsed is object and has a likely key, attempt to extract
-        if (typeof parsed === 'string') return parsed;
-        if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string') return parsed[0];
-        if (parsed && typeof parsed === 'object') {
-          // try common properties
-          if (typeof parsed.room === 'string') return parsed.room;
-          if (typeof parsed.value === 'string') return parsed.value;
-        }
-      } catch(e){
-        // ignore parse error
-      }
-    }
-
-    // final fallback: return the (possibly trimmed/stripped) string
-    return s;
-  }
-
-  // if raw is number/bool, convert to string
-  if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw);
-
-  // if it's an object, try to find useful fields
-  if (typeof raw === 'object') {
-    if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'string') return raw[0];
-    if (raw.room && typeof raw.room === 'string') return raw.room;
-    if (raw.value && typeof raw.value === 'string') return raw.value;
-  }
-
-  return null;
+function isValidRoomName(name) {
+  if (!name || typeof name !== 'string') return false;
+  return /^[A-Za-z0-9._:-]{1,80}$/.test(name);
 }
 
-// === Create persistent token (no TTL) ===
+// Persist token creation (no TTL)
 app.post('/api/request-join', async (req, res) => {
   try {
     const roomHint = (req.body && req.body.room) ? String(req.body.room).trim() : "AyushLive";
-    // we accept the hint here, but we will *still* validate on join
     const jti = makeJti();
 
     const setResp = await fetch(`${REDIS_URL}/set/${jti}`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${REDIS_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ value: roomHint }) // persistent
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ value: roomHint }) // persistent, no ex
     });
 
     if (!setResp.ok) {
@@ -116,88 +63,120 @@ app.post('/api/request-join', async (req, res) => {
   }
 });
 
-// === Serve join page (persistent token — robust parsing) ===
+// Serve join page — this page does NOT include the provider room anywhere.
+// It only embeds an iframe pointing at /proxy/:jti/ (your origin)
 app.get('/join/:jti', async (req, res) => {
   try {
     const jti = req.params.jti;
-    if (!jti || typeof jti !== 'string') return res.status(400).send("Bad request");
+    if (!jti) return res.status(400).send('Bad request');
 
-    const getResp = await fetch(`${REDIS_URL}/get/${jti}`, {
-      headers: { Authorization: `Bearer ${REDIS_TOKEN}` }
-    });
-
+    // Check token exists (but do NOT reveal room)
+    const getResp = await fetch(`${REDIS_URL}/get/${jti}`, { headers: { Authorization: `Bearer ${REDIS_TOKEN}` } });
     if (!getResp.ok) {
       console.error('Upstash get failed', getResp.status);
       return res.status(401).send("Unauthorized or unknown token");
     }
+    const body = await getResp.json();
+    const raw = body && body.result !== undefined ? body.result : null;
+    if (!raw) return res.status(401).send("Unauthorized or unknown token");
 
-    const roomData = await getResp.json();
-
-    // DEBUG: print raw response so you can inspect exactly what Upstash returned
-    console.log('DEBUG: raw roomData for jti=', jti, JSON.stringify(roomData));
-
-    // Upstash returns { result: <value> } — normalize that value
-    const rawValue = roomData && roomData.result !== undefined ? roomData.result : null;
-    const room = normalizeRoomValue(rawValue);
-
-    console.log('DEBUG: normalized room value =', room);
-
-    if (!room) return res.status(401).send("Unauthorized or unknown token");
-
-    if (!isValidRoomName(room)) {
-      console.warn('Invalid room rejected by validator:', room);
-      return res.status(400).send("Invalid room");
-    }
-
-    const escapeHtml = (s) => String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-
-    const safeRoom = escapeHtml(room);
-
+    // We *do not* place the room anywhere in this HTML source.
+    // The iframe points to /proxy/:jti/ which the server will use to lookup the real room and proxy to provider.
     res.send(`
       <!doctype html>
       <html>
         <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width,initial-scale=1">
-          <title>Join — ${safeRoom}</title>
-          <style>html,body{height:100%;margin:0;background:#000}iframe{width:100vw;height:100vh;border:0}</style>
+           <meta charset="utf-8">
+           <meta name="viewport" content="width=device-width,initial-scale=1">
+           <title>Join</title>
+           <style>html,body{height:100%;margin:0;background:#000}iframe{width:100vw;height:100vh;border:0}</style>
         </head>
         <body>
-          <iframe src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/${safeRoom}"
-                  allow="camera; microphone; fullscreen; autoplay"
-                  allowfullscreen
-                  style="border:0; width:100vw; height:100vh;">
-          </iframe>
+          <!-- IMPORTANT: outer iframe points to server proxy path. It does NOT include provider room. -->
+          <iframe src="/proxy/${jti}/" allow="camera; microphone; fullscreen; autoplay" allowfullscreen style="border:0; width:100vw; height:100vh;"></iframe>
         </body>
       </html>
     `);
-
-  } catch (e) {
-    console.error('join error', e);
-    res.status(500).send("Server error");
+  } catch (err) {
+    console.error('join error', err);
+    res.status(500).send('Server error');
   }
 });
 
-// Optional debug endpoint: return raw Upstash get response (only when DEBUG=true)
-if (process.env.DEBUG === 'true') {
-  app.get('/debug/raw/:jti', async (req, res) => {
+// PROXY: forward requests under /proxy/:jti/* to the provider while injecting the room server-side.
+// We create a small middleware that fetches the room for this jti and then uses http-proxy-middleware
+app.use('/proxy/:jti', async (req, res, next) => {
+  try {
     const jti = req.params.jti;
-    try {
-      const getResp = await fetch(`${REDIS_URL}/get/${jti}`, {
-        headers: { Authorization: `Bearer ${REDIS_TOKEN}` }
-      });
-      const body = await getResp.text();
-      return res.status(getResp.ok ? 200 : 502).send(body);
-    } catch (err) {
-      return res.status(500).send(String(err));
+    if (!jti) return res.status(400).send('Bad request');
+
+    // Get room for jti
+    const getResp = await fetch(`${REDIS_URL}/get/${jti}`, { headers: { Authorization: `Bearer ${REDIS_TOKEN}` }});
+    if (!getResp.ok) {
+      console.error('Upstash get failed (proxy)', getResp.status);
+      return res.status(401).send('Unauthorized or unknown token');
     }
-  });
-}
+    const roomData = await getResp.json();
+    const room = (roomData && roomData.result) ? String(roomData.result) : null;
+    if (!room) return res.status(401).send('Unauthorized or unknown token');
+
+    if (!isValidRoomName(room)) {
+      console.warn('Invalid room for proxy:', room);
+      return res.status(400).send('Invalid room');
+    }
+
+    // Build target path to provider (we will rewrite the incoming path to the provider path that contains the room)
+    const providerOrigin = PROVIDER_BASE.replace(/\/$/,''); // e.g. https://8x8.vc
+    const providerRoomPath = `/${PROVIDER_PATH_PREFIX}/${room}`; // e.g. /vpaas-.../AyushLive
+
+    // Create a proxy middleware instance for this request that rewrites path to the providerRoomPath
+    const proxy = createProxyMiddleware({
+      target: providerOrigin,
+      changeOrigin: true,
+      ws: true,
+      // rewrite any path under /proxy/:jti/* to providerRoomPath + the rest of the path after /proxy/:jti
+      pathRewrite: (path, req) => {
+        // req.url contains the path after /proxy/:jti; we want to append it to providerRoomPath
+        // Example: /proxy/abcd/ -> providerRoomPath + '/'
+        // Example: /proxy/abcd/some.js -> providerRoomPath + '/some.js'
+        const prefix = `/proxy/${jti}`;
+        let rest = path.startsWith(prefix) ? path.slice(prefix.length) : '';
+        if (!rest) rest = '/';
+        return providerRoomPath + rest;
+      },
+      onProxyReq: (proxyReq, req, res) => {
+        // Optional headers to add when proxying
+        // Example: proxyReq.setHeader('X-Forwarded-For', req.ip);
+      },
+      logLevel: 'warn'
+    });
+
+    // Delegate to proxy
+    return proxy(req, res, next);
+  } catch (err) {
+    console.error('proxy middleware error', err);
+    return res.status(500).send('Proxy error');
+  }
+});
+
+// Optional: a small revoke endpoint (admin) — protects you from permanently exposed links
+app.delete('/api/revoke/:jti', async (req, res) => {
+  const jti = req.params.jti;
+  // Protect this endpoint in production (basic token or admin auth)
+  if (!jti) return res.status(400).json({error:'bad_request'});
+  try {
+    const delResp = await fetch(`${REDIS_URL}/del/${jti}`, { method:'POST', headers:{ Authorization:`Bearer ${REDIS_TOKEN}` }});
+    if (!delResp.ok) {
+      const t = await delResp.text().catch(()=>null);
+      console.error('Upstash del failed', delResp.status, t);
+      return res.status(502).json({ error: 'upstash_error' });
+    }
+    return res.json({ ok:true });
+  } catch (e) {
+    console.error('revoke error', e);
+    return res.status(500).json({ error:'server_error' });
+  }
+});
 
 const port = process.env.PORT || 10000;
-app.listen(port, () => console.log(`Server running on port ${port}`));
+app.listen(port, ()=>console.log(`Server running on port ${port}`));
