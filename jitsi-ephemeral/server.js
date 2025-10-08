@@ -43,32 +43,27 @@ app.get('/join/:jti', async (req,res)=>{
 
     const room = typeof roomData.result === 'string' ? roomData.result : roomData.result.value;
 
-    // Do NOT delete token → reusable
-    res.send(`
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width,initial-scale=1">
-          <title>Join Meeting</title>
-          <style>
-            html,body{height:100%;margin:0;background:#000}
-            iframe{width:100vw;height:100vh;border:0}
-          </style>
-        </head>
-        <body>
-          <iframe id="meetFrame"
-                  allow="camera; microphone; fullscreen; autoplay"
-                  allowfullscreen
-                  style="border:0;width:100vw;height:100vh;">
-          </iframe>
-          <script>
-            const frame = document.getElementById('meetFrame');
-            frame.src = "https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/${room}";
-          </script>
-        </body>
-      </html>
-    `);
+// Do NOT delete token → reusable
+res.send(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Join Meeting</title>
+    <style>
+      html,body{height:100%;margin:0;background:#000}
+      iframe{width:100vw;height:100vh;border:0}
+    </style>
+  </head>
+  <body>
+    <iframe id="meetFrame"
+            allow="camera; microphone; fullscreen; autoplay"
+            allowfullscreen
+            style="border:0;width:100vw;height:100vh;"
+            src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/${room}">
+    </iframe>
+  </body>
+</html>`);
 
   } catch(e){
     console.error(e);
