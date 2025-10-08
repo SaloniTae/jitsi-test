@@ -70,10 +70,10 @@ app.get('/join/:jti', async (req, res) => {
     if (!getResp.ok) return res.status(401).send("Unauthorized or unknown token");
 
     const data = await getResp.json();
-    const room = data && data.result ? String(data.result) : null;
+    const room = data && data.result && data.result.value ? String(data.result.value) : null;
+
     if (!room) return res.status(401).send("Unauthorized or unknown token");
 
-    // Serve iframe without exposing room in network logs
     res.send(`
       <!doctype html>
       <html>
@@ -93,7 +93,6 @@ app.get('/join/:jti', async (req, res) => {
                   style="border:0;width:100vw;height:100vh;">
           </iframe>
           <script>
-            // Insert provider iframe dynamically to hide room in network logs
             const frame = document.getElementById('meetFrame');
             frame.src = "https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/${room}";
           </script>
