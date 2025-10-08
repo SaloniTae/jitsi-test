@@ -49,7 +49,7 @@ app.get('/join/:jti', async (req, res) => {
     // 3. **Secure Injection:** Replace the placeholder in the HTML file 
     // with the actual room name. The client-side script will read the
     // value from a hidden element, not from a plain script variable.
-    viewerHtml = viewerHtml.replace('ROOM_PLACEHOLDER', roomConfig);
+    viewerHtml = viewerHtml.replace('AyushLivee', roomConfig);
 
     res.send(viewerHtml);
 
