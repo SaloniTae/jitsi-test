@@ -1,106 +1,76 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <title>Viewer — Protected embed</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    :root { --bg:#000; --text:#e6f0f3; }
-    html,body{height:100%;margin:0;font-family:system-ui,Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);overflow:hidden;}
-    #jaas{height:100vh;background:var(--bg);position:relative;overflow:hidden;width:100vw;}
-    .viewer-controls{position:absolute;right:12px;top:12px;z-index:9999;display:none;gap:8px;align-items:center;}
-    .viewer-controls button{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.06);padding:8px 10px;color:var(--text);border-radius:6px;cursor:pointer;font-size:13px;}
-    #status{position:absolute;left:12px;top:12px;z-index:9999;font-size:13px;color:#9fb2b8;}
-    #meetFrame{width:100%;height:100vh;border:0;display:block;background:var(--bg);}
-  </style>
+<meta charset="utf-8"/>
+<title>Viewer — Protected embed</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root { --bg:#000; --text:#e6f0f3; }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);overflow:hidden;font-family:system-ui,Arial,Helvetica,sans-serif;}
+  #jaas{height:100vh;width:100vw;position:relative;overflow:hidden;background:var(--bg);}
+  #status{position:absolute;top:12px;left:12px;z-index:9999;font-size:13px;color:#9fb2b8;}
+  .viewer-controls{position:absolute;top:12px;right:12px;z-index:9999;display:none;gap:8px;}
+  .viewer-controls button{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.06);padding:8px 10px;color:var(--text);border-radius:6px;cursor:pointer;font-size:13px;}
+  #meetFrame{width:100%;height:100vh;border:0;display:block;}
+</style>
 </head>
 <body>
-  <div id="jaas" aria-label="meeting">
-    <div id="status">Connecting…</div>
-    <div class="viewer-controls" id="viewerControls">
-      <button id="btnFullscreen">Fullscreen</button>
-    </div>
+<div id="jaas">
+  <div id="status">Connecting…</div>
+  <div class="viewer-controls" id="viewerControls">
+    <button id="btnFullscreen">Fullscreen</button>
   </div>
+</div>
 
 <script>
-(async function(){
-  // NOTE: use location.origin so the viewer talks to the same host that served this page.
-  // If you host the viewer on a different origin than the server, set SERVICE_BASE to that server's origin.
-  const SERVICE_BASE = (typeof SERVICE_BASE !== 'undefined') ? SERVICE_BASE : location.origin;
-  const ROOM = "AyushLive"; // optional hint; server decides final room.
+(async()=>{
+  const SERVICE_BASE = "https://oor-islive.onrender.com";
 
   const statusEl = document.getElementById('status');
   const viewerControls = document.getElementById('viewerControls');
-  const setStatus = txt => { if (statusEl) statusEl.textContent = txt; };
+
+  function setStatus(txt){ if(statusEl) statusEl.textContent = txt; }
 
   async function requestAndEmbed(){
     setStatus('Requesting join link…');
-    try {
+    try{
       const resp = await fetch(`${SERVICE_BASE}/api/request-join`, {
         method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ room: ROOM })
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({})
       });
-
-      if (!resp.ok) {
-        const t = await resp.text().catch(()=>null);
-        console.error('request-join failed', resp.status, t);
-        setStatus('Server rejected request.');
-        return;
-      }
-
+      if(!resp.ok){ setStatus('Failed to get join link'); return; }
       const data = await resp.json();
-      console.log('join response', data);
-
-      // Get an absolute URL to /join/:jti on the server.
-      // Prefer data.fullJoinUrl if absolute; otherwise resolve joinUrl relative to SERVICE_BASE.
-      let joinHref = null;
-      if (data.fullJoinUrl && typeof data.fullJoinUrl === 'string' && data.fullJoinUrl.startsWith('http')) {
-        joinHref = data.fullJoinUrl;
-      } else if (data.joinUrl && typeof data.joinUrl === 'string') {
-        // joinUrl might be '/join/<jti>' or 'join/<jti>'
-        const path = data.joinUrl.startsWith('/') ? data.joinUrl : `/${data.joinUrl}`;
-        joinHref = `${SERVICE_BASE}${path}`;
-      } else {
-        setStatus('Failed to get join link.');
-        return;
-      }
+      if(!data || !data.fullJoinUrl){ setStatus('Invalid response'); return; }
 
       setStatus('Embedding meeting…');
 
       const iframe = document.createElement('iframe');
       iframe.id = 'meetFrame';
-      iframe.src = joinHref;
-      // Hide referrer to reduce leakage
-      iframe.referrerPolicy = 'no-referrer';
-      // Outer iframe should allow camera/mic propagation to nested provider iframe
-      iframe.allow = 'camera; microphone; fullscreen; autoplay; clipboard-write';
+      iframe.allow = 'camera; microphone; fullscreen; autoplay';
       iframe.allowFullscreen = true;
-      // Do NOT sandbox outer iframe if you want nested provider iframe to access camera
-      // iframe.sandbox = 'allow-scripts allow-same-origin';
+      iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups';
+      iframe.src = data.fullJoinUrl;
 
       const jaas = document.getElementById('jaas');
       jaas.innerHTML = '';
       jaas.appendChild(iframe);
 
-      if (viewerControls) viewerControls.style.display = 'flex';
-      setStatus('Joined — enjoy the meeting');
-      setTimeout(()=> setStatus(''), 3500);
-    } catch (err) {
-      console.error('requestAndEmbed error', err);
-      setStatus('Network error — retrying in 3s…');
-      setTimeout(()=> requestAndEmbed(), 3000);
-    }
+      if(viewerControls) viewerControls.style.display='flex';
+      setStatus('Joined');
+
+    }catch(err){ console.error(err); setStatus('Network error…'); setTimeout(requestAndEmbed,3000); }
   }
 
-  document.getElementById('btnFullscreen').addEventListener('click', ()=>{
+  // Fullscreen button
+  const fsBtn = document.getElementById('btnFullscreen');
+  if(fsBtn) fsBtn.addEventListener('click',()=>{
     const el = document.getElementById('jaas');
-    if (!el) return;
-    if (el.requestFullscreen) el.requestFullscreen();
-    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    if(!document.fullscreenElement) el.requestFullscreen?.(); 
+    else document.exitFullscreen?.();
   });
 
-  window.addEventListener('load', requestAndEmbed);
+  window.addEventListener('load',()=>requestAndEmbed());
 })();
 </script>
 </body>
