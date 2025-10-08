@@ -42,11 +42,10 @@ app.get('/join/:jti', async (req,res)=>{
 
     if(!roomData || !roomData.result) return res.status(401).send("Unauthorized or expired token");
 
-    const room = roomData.result;
+    // Correctly read the room string
+    const room = typeof roomData.result === 'string' ? roomData.result : roomData.result.value;
 
-    // **DO NOT DELETE TOKEN** → allows reuse
-
-    // Serve HTML that dynamically injects provider iframe
+    // Do NOT delete token → reusable
     res.send(`
       <!doctype html>
       <html>
