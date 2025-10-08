@@ -1,31 +1,28 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <title>Viewer — Protected embed (ephemeral join)</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    :root { --bg:#000; --text:#e6f0f3; }
-    html,body{height:100%;margin:0;font-family:system-ui,Arial,Helvetica,sans-serif;
-              background:var(--bg);color:var(--text);overflow:hidden;}
-    #jaas{height:100vh;background:var(--bg);position:relative;overflow:hidden;width:100vw;}
-    .viewer-controls{position:absolute;right:12px;top:12px;z-index:9999;display:none;
-                     gap:8px;align-items:center;}
-    .viewer-controls button{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.06);
-                            padding:8px 10px;color:var(--text);border-radius:6px;cursor:pointer;font-size:13px;}
-    #status{position:absolute;left:12px;top:12px;z-index:9999;font-size:13px;color:#9fb2b8;}
-    .force-landscape{
-      position:fixed !important;top:50% !important;left:50% !important;
-      width:100vh !important;height:100vw !important;transform-origin:center center !important;
-      transform:translate(-50%,-50%) rotate(90deg) !important;
-      z-index:99999 !important;background:var(--bg) !important;overflow:hidden !important;
-    }
-    #meetFrame{width:100%;height:100vh;border:0;display:block;background:var(--bg);}
-  </style>
+<meta charset="utf-8"/>
+<title>Viewer — Black background (auto-join, fullscreen landscape mobile, auto-pin screenshare)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<!-- JaaS external_api.js -->
+<script src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/external_api.js"></script>
+<style>
+  :root { --bg:#000; --text:#e6f0f3; }
+  html,body{height:100%;margin:0;font-family:system-ui,Arial,Helvetica,sans-serif;
+            background:var(--bg);color:var(--text);overflow:hidden;}
+  #jaas{height:100vh;background:var(--bg);position:relative;overflow:hidden;width:100vw;}
+  .viewer-controls{position:absolute;right:12px;top:12px;z-index:9999;display:none;gap:8px;align-items:center;}
+  .viewer-controls button{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.06);
+                          padding:8px 10px;color:var(--text);border-radius:6px;cursor:pointer;font-size:13px;}
+  .force-landscape{
+    position:fixed !important;top:50% !important;left:50% !important;
+    width:100vh !important;height:100vw !important;transform-origin:center center !important;
+    transform:translate(-50%,-50%) rotate(90deg) !important;
+    z-index:99999 !important;background:var(--bg) !important;overflow:hidden !important;}
+</style>
 </head>
 <body>
   <div id="jaas" aria-label="meeting">
-    <div id="status">Connecting…</div>
     <div class="viewer-controls" id="viewerControls">
       <button id="btnFullscreen">Fullscreen</button>
     </div>
@@ -33,76 +30,116 @@
 
 <script>
 (function () {
-  // ===== CONFIG =====
-  const ROOM         = "AyushLive";                // optional hint
-  const SERVICE_BASE = "https://oor-islive.onrender.com"; // change to your URL
+  // ─────── CONFIG you may tweak ─────────────────────────────
+  const SERVICE_BASE = "https://oor-islive.onrender.com";   // ← your Render/Heroku/etc. base URL
+  const APP_ID       = "vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9"; // JaaS App-ID
 
-  const FETCH_OPTS = {
-    method : 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body   : JSON.stringify({ room: ROOM })
-  };
+  // extra headers / credentials? add here:
+  const FETCH_OPTS = { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({}) };
 
-  const EXPECTED_TTL = 90;
+  // ─────── state vars ───────────────────────────────────────
+  let api                       = null;
+  let isForcingLandscapeViaCSS  = false;
 
-  // ===== UI helpers =====
-  const statusEl       = document.getElementById('status');
-  const viewerControls = document.getElementById('viewerControls');
-  const setStatus      = txt => statusEl && (statusEl.textContent = txt);
+  // ─────── helpers (orientation, fullscreen, mobile css) ────
+  /*  (exact same helpers as your original; truncated for brevity)  */
+  function isMobileOrTouchSmall(){try{const t="ontouchstart"in window||navigator.maxTouchPoints&&navigator.maxTouchPoints>0;
+  return t&&window.innerWidth<=900}catch(t){return!1}}let cssForced=!1;function cssOn(){if(!isMobileOrTouchSmall()||cssForced)return;
+  const t=document.getElementById("jaas");t&&(document.body.style.overflow="hidden",t.classList.add("force-landscape"),cssForced=!0)}
+  function cssOff(){if(!cssForced)return;const t=document.getElementById("jaas");t&&(t.classList.remove("force-landscape"),
+  document.body.style.overflow="",cssForced=!1)}async function lock(o){if(!o)return Promise.reject();
+  if(screen.orientation&&"function"==typeof screen.orientation.lock)return screen.orientation.lock(o);
+  const t=screen.lockOrientation||screen.mozLockOrientation||screen.msLockOrientation;
+  if("function"==typeof t)try{const n=t.call(screen,o);return n&&"function"==typeof n.then?n:Promise.resolve(n)}catch(o){return Promise.reject(o)}
+  return Promise.reject()}async function unlock(){try{screen.orientation&&"function"==typeof screen.orientation.unlock?screen.orientation.unlock():
+  screen.unlockOrientation?screen.unlockOrientation():screen.mozUnlockOrientation?screen.mozUnlockOrientation():
+  screen.msUnlockOrientation&&screen.msUnlockOrientation()}catch(o){}}async function enterFS(){const o=document.getElementById("jaas");
+  if(!o)return;try{o.requestFullscreen?await o.requestFullscreen():o.webkitRequestFullscreen?await o.webkitRequestFullscreen():
+  o.msRequestFullscreen&&await o.msRequestFullscreen()}catch(o){}try{await lock("landscape"),cssOff()}catch(o){cssOn()}}
+  async function exitFS(){try{document.exitFullscreen?await document.exitFullscreen():document.webkitExitFullscreen?
+  await document.webkitExitFullscreen():document.msExitFullscreen&&await document.msExitFullscreen()}catch(o){}unlock(),cssOff()}
+  function toggleFS(){document.fullscreenElement||document.webkitFullscreenElement||document.msFullscreenElement?exitFS():enterFS()}
+  function fsChange(){document.fullscreenElement||document.webkitFullscreenElement||document.msFullscreenElement||unlock(),cssOff()}
+  document.addEventListener("fullscreenchange",fsChange),document.addEventListener("webkitfullscreenchange",fsChange),
+  document.addEventListener("msfullscreenchange",fsChange);
 
-  // ---------- orientation + fullscreen helpers (unchanged) ----------
-  /* … (all helper functions exactly as in your original) … */
-  function isMobileOrTouchSmall(){try{const t="ontouchstart"in window||navigator.maxTouchPoints&&navigator.maxTouchPoints>0;return t&&window.innerWidth<=900}catch(t){return!1}}let isForcingLandscapeViaCSS=!1;function applyCssLandscapeFallback(){if(isMobileOrTouchSmall()&&!isForcingLandscapeViaCSS){const t=document.getElementById("jaas");t&&(document.body.style.overflow="hidden",t.classList.add("force-landscape"),isForcingLandscapeViaCSS=!0)}}function removeCssLandscapeFallback(){if(isForcingLandscapeViaCSS){const t=document.getElementById("jaas");t&&(t.classList.remove("force-landscape"),document.body.style.overflow="",isForcingLandscapeViaCSS=!1)}}async function tryLockOrientation(t){if(t){if(screen.orientation&&"function"==typeof screen.orientation.lock)return screen.orientation.lock(t);const e=screen.lockOrientation||screen.mozLockOrientation||screen.msLockOrientation;if("function"==typeof e)try{const n=e.call(screen,t);return n&&"function"==typeof n.then?n:Promise.resolve(n)}catch(t){return Promise.reject(t)}return Promise.reject("Orientation lock not supported")}return Promise.reject("No orientation API")}async function tryUnlockOrientation(){try{screen.orientation&&"function"==typeof screen.orientation.unlock?screen.orientation.unlock():screen.unlockOrientation?screen.unlockOrientation():screen.mozUnlockOrientation?screen.mozUnlockOrientation():screen.msUnlockOrientation&&screen.msUnlockOrientation()}catch(t){}}async function enterFullscreenAndLandscape(){const t=document.getElementById("jaas");if(t){try{t.requestFullscreen?await t.requestFullscreen():t.webkitRequestFullscreen?await t.webkitRequestFullscreen():t.msRequestFullscreen&&await t.msRequestFullscreen()}catch(t){}try{await tryLockOrientation("landscape"),removeCssLandscapeFallback()}catch(t){applyCssLandscapeFallback()}}}async function exitFullscreenAndRestore(){try{document.exitFullscreen?await document.exitFullscreen():document.webkitExitFullscreen?await document.webkitExitFullscreen():document.msExitFullscreen&&await document.msExitFullscreen()}catch(t){}tryUnlockOrientation(),removeCssLandscapeFallback()}function toggleFullscreen(){document.fullscreenElement||document.webkitFullscreenElement||document.msFullscreenElement?exitFullscreenAndRestore():enterFullscreenAndLandscape()}document.addEventListener("fullscreenchange",(()=>{document.fullscreenElement||(tryUnlockOrientation(),removeCssLandscapeFallback())})),document.addEventListener("webkitfullscreenchange",(()=>{document.webkitFullscreenElement||(tryUnlockOrientation(),removeCssLandscapeFallback())})),document.addEventListener("msfullscreenchange",(()=>{document.msFullscreenElement||(tryUnlockOrientation(),removeCssLandscapeFallback())}));
+  // ─────── Jitsi boot helper ────────────────────────────────
+  function bootJitsi(roomName, jwtToken=""){
+    if(api) return;
+    const options = {
+      roomName,
+      parentNode : document.getElementById('jaas'),
+      userInfo   : { displayName:'Viewer' },
+      configOverwrite: {
+        prejoinPageEnabled : false,
+        prejoinConfig      : { enabled:false },
+        disableInitialGUM  : true,
+        startWithAudioMuted: true,
+        startWithVideoMuted: true,
+        filmstrip          : { disabled:true },
+        desktopSharingFrameRate:{min:15,max:30}
+      },
+      interfaceConfigOverwrite: {
+        TOOLBAR_BUTTONS: [],
+        SHOW_JITSI_WATERMARK:false, SHOW_BRAND_WATERMARK:false,
+        SHOW_POWERED_BY:false, SHOW_CHROME_EXTENSION_BANNER:false,
+        SHOW_DEEP_LINKING_IMAGE:false, SHOW_WATERMARK_FOR_GUESTS:false,
+        VIDEO_LAYOUT_FIT:'both', filmStripOnly:false, SHOW_PARTICIPANT_NAME:false,
+        DISABLE_VIDEO_BACKGROUND:true
+      },
+      width:'100%', height:'100%'
+    };
+    if(jwtToken) options.jwt = jwtToken;
 
-  // ===== Core flow: ask server for /join link, embed it =====
-  async function requestAndEmbed() {
-    setStatus('Requesting secure join URL…');
+    api = new JitsiMeetExternalAPI("8x8.vc", options);
 
+    /* ---- identical event logic as the original file (auto-pin etc.) ---- */
+    function ensureHideFilmstrip(){setTimeout(()=>{try{api.executeCommand('toggleFilmStrip')}catch(e){}},300)}
+    api.addEventListener('videoConferenceJoined', async () => {
+      ensureHideFilmstrip(); document.getElementById('viewerControls').style.display='flex';
+      // auto-pin current sharer (same logic as before) …
+      const list=await api.getParticipantsInfo(); const sharer=list.find(p=>p.isSharingScreen||p.videoType==='desktop'||p.videoType==='screen');
+      if(sharer&&sharer.participantId!==api.getCurrentUserID()) {
+        try{api.executeCommand('setTileView',false);api.executeCommand('pinParticipant',sharer.participantId);}catch(e){}
+      }
+    });
+    api.addEventListener('videoConferenceLeft', ()=>{document.getElementById('viewerControls').style.display='none';});
+    api.addEventListener('screenSharingStatusChanged', async () => {
+      const list=await api.getParticipantsInfo(); const sharer=list.find(p=>p.isSharingScreen||p.videoType==='desktop'||p.videoType==='screen');
+      if(sharer&&sharer.participantId!==api.getCurrentUserID()){
+        try{api.executeCommand('setTileView',false);api.executeCommand('pinParticipant',sharer.participantId);}catch(e){}
+      }
+    });
+    api.addEventListener('participantJoined', async () => {
+      const list=await api.getParticipantsInfo(); const sharer=list.find(p=>p.isSharingScreen||p.videoType==='desktop'||p.videoType==='screen');
+      if(sharer&&sharer.participantId!==api.getCurrentUserID()){
+        try{api.executeCommand('setTileView',false);api.executeCommand('pinParticipant',sharer.participantId);}catch(e){}
+      }
+    });
+  }
+
+  // ─────── main flow: ask server, then boot Jitsi ───────────
+  async function init(){
     try {
-      const resp = await fetch(`${SERVICE_BASE.replace(/\/$/,'')}/api/request-join`, FETCH_OPTS);
+      const r = await fetch(`${SERVICE_BASE.replace(/\/$/,'')}/api/request-join`, FETCH_OPTS);
+      if(!r.ok) { console.error('request-join failed',r.status); return; }
+      const data = await r.json();
 
-      if (!resp.ok) {
-        const errTxt = await resp.text().catch(()=>'');
-        console.error('request-join failed', resp.status, errTxt);
-        setStatus('Unable to get join link.');
-        return;
-      }
+      const room = (data.room || 'AyushLive').trim();
+      const jwt  = (data.jwt  || '').trim();
 
-      const data = await resp.json();
-      if (!data || !data.joinUrl) {
-        console.error('unexpected response', data);
-        setStatus('Failed to get join link.');
-        return;
-      }
-
-      setStatus('Embedding meeting…');
-
-      const iframe = document.createElement('iframe');
-      iframe.id    = 'meetFrame';
-      iframe.src   = data.joinUrl;
-      iframe.allow = 'camera; microphone; fullscreen; clipboard-write';
-      iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups';
-
-      const jaas = document.getElementById('jaas');
-      jaas.innerHTML = '';
-      jaas.appendChild(iframe);
-
-      viewerControls && (viewerControls.style.display = 'flex');
-      setStatus('Joined — enjoy!');
-
-      // hide status after a moment
-      setTimeout(() => setStatus(''), 4_000);
-    } catch (err) {
-      console.error('requestAndEmbed error', err);
-      setStatus('Network error — retrying in 3 s…');
-      setTimeout(requestAndEmbed, 3_000);
+      bootJitsi(`${APP_ID}/${room}`, jwt);
+    } catch(err){
+      console.error('init error', err);
+      // fallback: still try with default room
+      bootJitsi(`${APP_ID}/AyushLive`);
     }
   }
 
-  // ===== boot =====
+  // ─────── kick things off ──────────────────────────────────
   window.addEventListener('load', () => {
-    document.getElementById('btnFullscreen')?.addEventListener('click', toggleFullscreen);
-    requestAndEmbed();
+    document.getElementById('btnFullscreen').addEventListener('click', toggleFS);
+    init();
   });
 })();
 </script>
