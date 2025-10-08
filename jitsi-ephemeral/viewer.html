@@ -2,181 +2,89 @@
 <html>
 <head>
 <meta charset="utf-8"/>
-<title>Viewer — black bg, auto-pin share, mobile FS</title>
+<title>Viewer</title>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<!-- JaaS external_api.js -->
 <script src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/external_api.js"></script>
 <style>
   :root { --bg:#000; --text:#e6f0f3; }
   html,body{height:100%;margin:0;font-family:system-ui,Arial,sans-serif;
             background:var(--bg);color:var(--text);overflow:hidden;}
-  #jaas{height:100vh;width:100vw;position:relative;overflow:hidden;background:var(--bg);}
-  .viewer-controls{position:absolute;right:12px;top:12px;z-index:9999;display:none;gap:8px;align-items:center;}
+  #jaas{height:100vh;width:100vw;background:var(--bg);position:relative;overflow:hidden;}
+  .viewer-controls{position:absolute;right:12px;top:12px;z-index:9999;display:none;gap:8px;}
   .viewer-controls button{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.06);
                           padding:8px 10px;border-radius:6px;color:var(--text);cursor:pointer;font-size:13px;}
-  .force-landscape{position:fixed !important;top:50%!important;left:50%!important;
-                   width:100vh!important;height:100vw!important;transform-origin:center center!important;
-                   transform:translate(-50%,-50%) rotate(90deg)!important;z-index:99999!important;
-                   background:var(--bg)!important;overflow:hidden!important;}
+  .force-landscape{position:fixed!important;top:50%!important;left:50%!important;width:100vh!important;height:100vw!important;
+                   transform:translate(-50%,-50%) rotate(90deg)!important;transform-origin:center!important;z-index:99999!important;
+                   background:var(--bg)!important;}
 </style>
 </head>
 <body>
-  <div id="jaas" aria-label="meeting">
-    <div class="viewer-controls" id="viewerControls">
-      <button id="btnFullscreen">Fullscreen</button>
-    </div>
-  </div>
+  <div id="jaas"><div class="viewer-controls" id="viewerControls"><button id="btnFullscreen">Fullscreen</button></div></div>
 
 <script>
 (function(){
-  /* ---------- CONFIG (room filled in by server) ---------- */
+  /* ---- ROOM injected by server ---- */
   const APP_ID = "vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9";
-  const ROOM   = `${APP_ID}/%%ROOM_PLACEHOLDER%%`;   // <- server replaces
-  const JWT    = "";                                 // fill if you pass JWT
+  const ROOM   = `${APP_ID}/%%ROOM_PLACEHOLDER%%`;
   const DOMAIN = "8x8.vc";
+  const JWT    = "";
 
-  /* ---------- state & helpers (unchanged from your file) -- */
-  let api = null;
-  let isForcingLandscapeViaCSS = false;
+  let api=null,isCSS=false;
 
-  function isMobileOrTouchSmall(){
-    try{
-      const hasTouch=('ontouchstart'in window)||navigator.maxTouchPoints>0;
-      const small=window.innerWidth<=900;
-      return hasTouch&&small;
-    }catch(e){return false;}
+  function isMobileSmall(){
+    try{return (('ontouchstart'in window)||navigator.maxTouchPoints>0)&&window.innerWidth<=900;}catch(e){return false;}
   }
-
-  function ensureHideFilmstrip(apiInstance){
-    setTimeout(()=>{try{apiInstance.executeCommand('toggleFilmStrip');}catch(e){}},300);
-  }
-
-  /* --- orientation / fullscreen helpers (kept full length) --- */
-  async function tryLockOrientation(orientation){
-    if(!orientation) return Promise.reject();
-    if(screen.orientation&&typeof screen.orientation.lock==='function')
-      return screen.orientation.lock(orientation);
-    const maybe=screen.lockOrientation||screen.mozLockOrientation||screen.msLockOrientation;
-    if(typeof maybe==='function'){
-      try{
-        const ok=maybe.call(screen,orientation);
-        return ok&&typeof ok.then==='function'?ok:Promise.resolve(ok);
-      }catch(e){return Promise.reject(e);}
-    }
-    return Promise.reject('not supported');
-  }
-  function tryUnlockOrientation(){
-    try{
-      if(screen.orientation&&typeof screen.orientation.unlock==='function')screen.orientation.unlock();
-      else if(screen.unlockOrientation)screen.unlockOrientation();
-      else if(screen.mozUnlockOrientation)screen.mozUnlockOrientation();
-      else if(screen.msUnlockOrientation)screen.msUnlockOrientation();
-    }catch(e){}
-  }
-  function applyCssLandscapeFallback(){
-    if(!isMobileOrTouchSmall()||isForcingLandscapeViaCSS)return;
-    const jaas=document.getElementById('jaas');
-    if(!jaas)return;
-    document.body.style.overflow='hidden';
-    jaas.classList.add('force-landscape');
-    isForcingLandscapeViaCSS=true;
-  }
-  function removeCssLandscapeFallback(){
-    if(!isForcingLandscapeViaCSS)return;
-    const jaas=document.getElementById('jaas');
-    if(!jaas)return;
-    jaas.classList.remove('force-landscape');
-    document.body.style.overflow='';
-    isForcingLandscapeViaCSS=false;
-  }
-  async function enterFullscreenAndLandscape(){
+  function cssOn(){if(!isMobileSmall()||isCSS)return;const j=document.getElementById('jaas');
+    j&&(document.body.style.overflow='hidden',j.classList.add('force-landscape'),isCSS=true);}
+  function cssOff(){if(!isCSS)return;const j=document.getElementById('jaas');
+    j&&(j.classList.remove('force-landscape'),document.body.style.overflow='',isCSS=false);}
+  async function lock(o){if(screen.orientation&&screen.orientation.lock) return screen.orientation.lock(o);
+    const f=screen.lockOrientation||screen.mozLockOrientation||screen.msLockOrientation;if(f)return f.call(screen,o);
+    throw'no lock';}
+  async function enterFS(){
     const el=document.getElementById('jaas');
-    if(!el)return;
-    try{
-      if(el.requestFullscreen)await el.requestFullscreen();
-      else if(el.webkitRequestFullscreen)await el.webkitRequestFullscreen();
-      else if(el.msRequestFullscreen)await el.msRequestFullscreen();
-    }catch(e){}
-    try{await tryLockOrientation('landscape');removeCssLandscapeFallback();}
-    catch(e){applyCssLandscapeFallback();}
+    if(el.requestFullscreen) await el.requestFullscreen();
+    else if(el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+    else if(el.msRequestFullscreen) await el.msRequestFullscreen();
+    try{await lock('landscape');cssOff();}catch(e){cssOn();}
   }
-  async function exitFullscreenAndRestore(){
-    try{
-      if(document.exitFullscreen)await document.exitFullscreen();
-      else if(document.webkitExitFullscreen)await document.webkitExitFullscreen();
-      else if(document.msExitFullscreen)await document.msExitFullscreen();
-    }catch(e){}
-    tryUnlockOrientation();
-    removeCssLandscapeFallback();
+  async function exitFS(){
+    if(document.exitFullscreen) await document.exitFullscreen();
+    else if(document.webkitExitFullscreen) await document.webkitExitFullscreen();
+    else if(document.msExitFullscreen) await document.msExitFullscreen();
+    cssOff();
   }
-  function toggleFullscreen(){
-    const isFull=!!(document.fullscreenElement||document.webkitFullscreenElement||document.msFullscreenElement);
-    if(!isFull)enterFullscreenAndLandscape();else exitFullscreenAndRestore();
-  }
-  function onFSChange(){
-    const isFull=!!(document.fullscreenElement||document.webkitFullscreenElement||document.msFullscreenElement);
-    if(!isFull){tryUnlockOrientation();removeCssLandscapeFallback();}
-  }
-  document.addEventListener('fullscreenchange',onFSChange);
-  document.addEventListener('webkitfullscreenchange',onFSChange);
-  document.addEventListener('msfullscreenchange',onFSChange);
+  function toggleFS(){!document.fullscreenElement&& !document.webkitFullscreenElement&& !document.msFullscreenElement
+                     ?enterFS():exitFS();}
+  document.addEventListener('fullscreenchange',cssOff);
+  document.addEventListener('webkitfullscreenchange',cssOff);
+  document.addEventListener('msfullscreenchange',cssOff);
 
-  /* ---------- Jitsi boot (original logic) ---------- */
-  function initJitsi(){
+  function init(){
     if(api) return;
     const opts={
-      roomName:ROOM,
-      parentNode:document.getElementById('jaas'),
+      roomName:ROOM,parentNode:document.getElementById('jaas'),
       userInfo:{displayName:'Viewer'},
       configOverwrite:{
-        prejoinConfig:{enabled:false},
-        disableInitialGUM:true,
-        startWithAudioMuted:true,
-        startWithVideoMuted:true,
-        filmstrip:{disabled:true},
-        desktopSharingFrameRate:{min:15,max:30}
+        prejoinConfig:{enabled:false},disableInitialGUM:true,
+        startWithAudioMuted:true,startWithVideoMuted:true,
+        filmstrip:{disabled:true}
       },
-      interfaceConfigOverwrite:{
-        TOOLBAR_BUTTONS:[],
-        SHOW_JITSI_WATERMARK:false,SHOW_BRAND_WATERMARK:false,SHOW_POWERED_BY:false,
-        SHOW_CHROME_EXTENSION_BANNER:false,SHOW_DEEP_LINKING_IMAGE:false,
-        SHOW_WATERMARK_FOR_GUESTS:false,VIDEO_LAYOUT_FIT:'both',
-        filmStripOnly:false,SHOW_PARTICIPANT_NAME:false,DISABLE_VIDEO_BACKGROUND:true
-      },
+      interfaceConfigOverwrite:{TOOLBAR_BUTTONS:[],SHOW_JITSI_WATERMARK:false,
+        SHOW_BRAND_WATERMARK:false,SHOW_POWERED_BY:false},
       width:'100%',height:'100%'
     };
     if(JWT) opts.jwt=JWT;
 
     api=new JitsiMeetExternalAPI(DOMAIN,opts);
 
-    api.addEventListener('videoConferenceJoined',async()=>{
-      document.getElementById('jaas').style.background='#000';
-      document.getElementById('viewerControls').style.display='flex';
-      ensureHideFilmstrip(api);
-      pinCurrentSharer();
-    });
-    api.addEventListener('videoConferenceLeft',()=>{
-      document.getElementById('viewerControls').style.display='none';
-    });
-    api.addEventListener('screenSharingStatusChanged',pinCurrentSharer);
-    api.addEventListener('participantJoined',pinCurrentSharer);
-
-    async function pinCurrentSharer(){
-      try{
-        const list=await api.getParticipantsInfo();
-        const sharer=list.find(p=>p.isSharingScreen||p.videoType==='desktop'||p.videoType==='screen');
-        if(sharer&&sharer.participantId!==api.getCurrentUserID()){
-          api.executeCommand('setTileView',false);
-          api.executeCommand('pinParticipant',sharer.participantId);
-        }
-      }catch(e){}
-    }
+    api.addEventListener('videoConferenceJoined',()=>document.getElementById('viewerControls').style.display='flex');
+    api.addEventListener('videoConferenceLeft', ()=>document.getElementById('viewerControls').style.display='none');
   }
 
-  /* ---------- start ---------- */
   window.addEventListener('load',()=>{
-    initJitsi();
-    document.getElementById('btnFullscreen').addEventListener('click',toggleFullscreen);
+    init();
+    document.getElementById('btnFullscreen').addEventListener('click',toggleFS);
   });
 })();
 </script>
