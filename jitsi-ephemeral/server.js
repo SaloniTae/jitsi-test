@@ -1,91 +1,52 @@
 const express = require('express');
-const fetch = require('node-fetch'); // Node >=18 can use global fetch
-const crypto = require('crypto');
-const cors = require('cors');
-
+const fetch = require('node-fetch');
 const app = express();
 app.use(express.json());
 
-// Allow CORS from anywhere (adjust in prod)
-app.use(cors({
-  origin: true
-}));
-
 // Upstash Redis config
-const REDIS_URL = process.env.UPSTASH_REST_URL || "https://active-marmoset-8778.upstash.io";
-const REDIS_TOKEN = process.env.UPSTASH_REST_TOKEN || "ASJKAAImcDI0Mjc0NjZhMzJlODY0OWRiODc0OWUwODEwMTU2N2Q4ZnAyODc3OA";
+const REDIS_URL = "https://active-marmoset-8778.upstash.io";
+const REDIS_TOKEN = "ASJKAAImcDI0Mjc0NjZhMzJlODY0OWRiODc0OWUwODEwMTU2N2Q4ZnAyODc3OA";
 
-function isValidRoomName(name) {
-  if (!name || typeof name !== 'string') return false;
-  return /^[A-Za-z0-9._:-]{1,80}$/.test(name);
-}
+const TTL = 3600; // seconds (1 hour for example)
 
-function makeJti() {
-  return crypto.randomBytes(12).toString('hex');
-}
-
-function getServiceBaseUrl(req) {
-  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http');
-  const host = req.get('x-forwarded-host') || req.get('host');
-  return `${proto}://${host}`;
-}
-
-// === Create persistent token (no TTL) ===
-app.post('/api/request-join', async (req, res) => {
+// Generate persistent token
+app.post('/api/request-join', async (req,res)=>{
   try {
-    const room = req.body?.room?.trim() || "AyushLive";
-    if (!isValidRoomName(room)) return res.status(400).json({ error: 'invalid_room' });
+    const room = req.body.room || "AyushLive";
+    const jti = Math.random().toString(36).substr(2,16);
 
-    const jti = makeJti();
-
-    // Store in Upstash Redis as JSON string
-    const setResp = await fetch(`${REDIS_URL}/set/${jti}`, {
+    // Store token in Redis (will expire automatically after TTL)
+    await fetch(`${REDIS_URL}/set/${jti}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${REDIS_TOKEN}`,
-        "Content-Type": "application/json"
+        "Content-Type":"application/json"
       },
-      body: JSON.stringify({ value: room }) // persistent
+      body: JSON.stringify({ value: room, ex: TTL })
     });
 
-    if (!setResp.ok) {
-      const txt = await setResp.text().catch(() => null);
-      console.error('Upstash set failed', setResp.status, txt);
-      return res.status(502).json({ error: 'upstash_error' });
-    }
-
-    const base = getServiceBaseUrl(req);
-    const fullJoinUrl = `${base}/join/${jti}`;
-
-    res.json({ joinUrl: `/join/${jti}`, fullJoinUrl });
-
-  } catch (e) {
-    console.error('request-join error', e);
+    res.json({ joinUrl: `/join/${jti}`, ttl: TTL });
+  } catch(e){
+    console.error(e);
     res.status(500).json({ error: 'server_error' });
   }
 });
 
-// === Serve join page (persistent token, room hidden) ===
-app.get('/join/:jti', async (req, res) => {
+// Serve join page (room hidden, token reusable)
+app.get('/join/:jti', async (req,res)=>{
   try {
     const jti = req.params.jti;
+    const roomData = await fetch(`${REDIS_URL}/get/${jti}`, {
+      headers:{ Authorization: `Bearer ${REDIS_TOKEN}` }
+    }).then(r=>r.json());
 
-    const getResp = await fetch(`${REDIS_URL}/get/${jti}`, {
-      headers: { Authorization: `Bearer ${REDIS_TOKEN}` }
-    });
+    if(!roomData || !roomData.result) return res.status(401).send("Unauthorized or expired token");
 
-    if (!getResp.ok) return res.status(401).send("Unauthorized or unknown token");
+    const room = roomData.result;
 
-    const data = await getResp.json();
-    if (!data?.result) return res.status(401).send("Unauthorized or unknown token");
+    // **DO NOT DELETE TOKEN** → allows reuse
 
-    // Upstash stores JSON as string, parse it
-    let roomObj;
-    try { roomObj = JSON.parse(data.result); } catch(e){ roomObj = null; }
-    const room = roomObj?.value || null;
-    if (!room) return res.status(401).send("Unauthorized or unknown token");
-
-    // Serve HTML that dynamically sets iframe src to hide room from network logs
+    // Serve HTML that dynamically injects provider iframe
     res.send(`
       <!doctype html>
       <html>
@@ -112,11 +73,10 @@ app.get('/join/:jti', async (req, res) => {
       </html>
     `);
 
-  } catch (e) {
-    console.error('join error', e);
+  } catch(e){
+    console.error(e);
     res.status(500).send("Server error");
   }
 });
 
-const port = process.env.PORT || 10000;
-app.listen(port, () => console.log(`Server running on port ${port}`));
+app.listen(process.env.PORT || 10000, ()=>console.log("Server running..."));
