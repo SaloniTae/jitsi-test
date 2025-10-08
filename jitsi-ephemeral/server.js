@@ -30,7 +30,7 @@ app.get('/join/:jti', async (req, res) => {
 
     // 3. Inject the room name into the HTML placeholder for security/separation
     // We are replacing a placeholder in the HTML file, which will be defined below.
-    viewerHtml = viewerHtml.replace('ROOM_PLACEHOLDER', roomConfig);
+    viewerHtml = viewerHtml.replace('Ayushh', roomConfig);
 
     // 4. Send the final HTML content. The link is now permanent, reusable, and reloadable.
     res.send(viewerHtml);
