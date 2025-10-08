@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Auto-join Jitsi Room (Render)</title>
+
+  <script src="https://meet.jit.si/external_api.js"></script>
+  <style>
+    html,body,#jitsi { height:100%; margin:0; }
+  </style>
+</head>
+<body>
+  <div id="jitsi"></div>
+
+  <script>
+    // 1) Fetch the secret config from our own back-end
+    fetch('/config')
+      .then(r => r.json())
+      .then(cfg => startJitsi(cfg))
+      .catch(err => alert('Could not load room config: ' + err));
+
+    // 2) Spin up Jitsi once we have the data
+    function startJitsi({ roomName, roomPass }) {
+      const api = new JitsiMeetExternalAPI('meet.jit.si', {
+        roomName,
+        parentNode: document.getElementById('jitsi'),
+        userInfo: { displayName: 'Alice' },
+        configOverwrite: { prejoinPageEnabled:false }
+      });
+
+      api.addEventListener('participantRoleChanged', e => {
+        if (e.role === 'moderator') api.executeCommand('password', roomPass);
+      });
+      api.on('passwordRequired', () => api.executeCommand('password', roomPass));
+    }
+  </script>
+</body>
+</html>
