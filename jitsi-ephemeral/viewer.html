@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8"/>
-  <title>Viewer — Protected embed (ephemeral/persistent join)</title>
+  <title>Viewer — Protected embed (hide provider room)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     :root { --bg:#000; --text:#e6f0f3; }
@@ -47,10 +47,9 @@
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
-      // add auth headers if your API requires them, e.g. 'x-admin-token': '...'
     },
     body: JSON.stringify({ room: ROOM })
-    // add credentials: 'include' here if you use cookie sessions
+    // include credentials: 'include' if you use cookie sessions
   };
 
   const statusEl = document.getElementById('status');
@@ -58,7 +57,7 @@
 
   function setStatus(text) { if (statusEl) statusEl.textContent = text; }
 
-  // Orientation & fullscreen helpers
+  // Orientation & fullscreen helpers (kept minimal)
   function isMobileOrTouchSmall() {
     try {
       const hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
@@ -148,7 +147,7 @@
   document.addEventListener('webkitfullscreenchange', ()=>{ if (!document.webkitFullscreenElement) { tryUnlockOrientation(); removeCssLandscapeFallback(); }});
   document.addEventListener('msfullscreenchange', ()=>{ if (!document.msFullscreenElement) { tryUnlockOrientation(); removeCssLandscapeFallback(); }});
 
-  // ===== Core: request ephemeral/persistent join and embed iframe =====
+  // ===== Core: request join and embed server-side join page (do NOT expose provider room) =====
   async function requestAndEmbed() {
     setStatus('Requesting secure join URL…');
     try {
@@ -165,8 +164,7 @@
         return;
       }
 
-      // Resolve an absolute join URL:
-      // prefer server-provided fullJoinUrl; otherwise build absolute from joinUrl + SERVICE_BASE
+      // Prefer server-provided absolute URL (fullJoinUrl). Fallback to joinUrl resolved against SERVICE_BASE.
       let joinHref = null;
       if (data.fullJoinUrl && typeof data.fullJoinUrl === 'string' && data.fullJoinUrl.startsWith('http')) {
         joinHref = data.fullJoinUrl;
@@ -178,18 +176,22 @@
         return;
       }
 
+      // IMPORTANT: joinHref must point to your server's /join/:jti (NOT the provider origin).
+      // The server should serve an HTML that embeds ONLY a server-side proxy path (e.g. /proxy/:jti/)
+      // so the provider room never appears in client network logs or page source.
+
       setStatus('Embedding meeting…');
 
-      // Create outer iframe that points to your server's /join/:jti page
       const iframe = document.createElement('iframe');
       iframe.id = 'meetFrame';
       iframe.src = joinHref;
 
-      // Allow camera/mic + fullscreen on outer iframe. Avoid sandboxing outer iframe if you need camera access.
+      // Hide referrer to reduce leakage if any absolute provider URL is requested later:
+      iframe.referrerPolicy = 'no-referrer';
+
+      // Allow camera/mic + fullscreen. DO NOT sandbox outer iframe if you need camera/mic for nested provider UI.
       iframe.allow = 'camera; microphone; fullscreen; autoplay; clipboard-write';
       iframe.allowFullscreen = true;
-      // DO NOT set sandbox if you rely on camera/mic in nested provider iframe:
-      // iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups';
 
       // insert iframe into container
       const jaas = document.getElementById('jaas');
@@ -201,7 +203,7 @@
       setStatus('Joined — enjoying the meeting');
       setTimeout(()=> setStatus(''), 4000);
 
-      // NOTE: we intentionally DO NOT auto-blank the iframe — tokens are persistent/non-TTL in your requested flow.
+      // We intentionally DO NOT auto-blank the iframe.
 
     } catch (err) {
       console.error('requestAndEmbed error', err);
