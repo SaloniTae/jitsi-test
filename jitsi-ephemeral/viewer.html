@@ -1,30 +1,18 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <title>Viewer — Protected embed (hide provider room)</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    :root { --bg:#000; --text:#e6f0f3; }
-    html,body{height:100%; margin:0; font-family:system-ui,Arial,Helvetica,sans-serif; background:var(--bg); color:var(--text); overflow:hidden;}
-    #jaas {height:100vh; background:var(--bg); position:relative; overflow:hidden; width:100vw;}
-    .viewer-controls { position:absolute; right:12px; top:12px; z-index:9999; display:none; gap:8px; align-items:center; }
-    .viewer-controls button { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.06); padding:8px 10px; color:var(--text); border-radius:6px; cursor:pointer; font-size:13px; }
-    #status { position:absolute; left:12px; top:12px; z-index:9999; font-size:13px; color: #9fb2b8; }
-    .force-landscape {
-      position: fixed !important;
-      top: 50% !important;
-      left: 50% !important;
-      width: 100vh !important;
-      height: 100vw !important;
-      transform-origin: center center !important;
-      transform: translate(-50%, -50%) rotate(90deg) !important;
-      z-index: 99999 !important;
-      background: var(--bg) !important;
-      overflow: hidden !important;
-    }
-    #meetFrame { width:100%; height:100vh; border:0; display:block; background:var(--bg); }
-  </style>
+<meta charset="utf-8"/>
+<title>Viewer — Protected embed</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+  :root { --bg:#000; --text:#e6f0f3; }
+  html,body{height:100%;margin:0;font-family:system-ui,Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);overflow:hidden;}
+  #jaas{height:100vh;background:var(--bg);position:relative;overflow:hidden;width:100vw;}
+  .viewer-controls{position:absolute;right:12px;top:12px;z-index:9999;display:none;gap:8px;align-items:center;}
+  .viewer-controls button{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.06);padding:8px 10px;color:var(--text);border-radius:6px;cursor:pointer;font-size:13px;}
+  #status{position:absolute;left:12px;top:12px;z-index:9999;font-size:13px;color:#9fb2b8;}
+  #meetFrame{width:100%;height:100vh;border:0;display:block;background:var(--bg);}
+</style>
 </head>
 <body>
   <div id="jaas" aria-label="meeting">
@@ -35,190 +23,51 @@
   </div>
 
 <script>
-(function(){
-  // ===== CONFIG =====
-  // Optional room hint (server decides final room) - keep or omit
+(async function(){
+  const SERVICE_BASE = "https://oor-islive.onrender.com"; // your server
   const ROOM = "AyushLive";
-  // Set this to your service base URL (example):
-  const SERVICE_BASE = "https://oor-islive.onrender.com";
-
-  // Fetch options for request-join
-  const FETCH_OPTS = {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ room: ROOM })
-    // include credentials: 'include' if you use cookie sessions
-  };
 
   const statusEl = document.getElementById('status');
   const viewerControls = document.getElementById('viewerControls');
+  const setStatus = txt => { if(statusEl) statusEl.textContent = txt; };
 
-  function setStatus(text) { if (statusEl) statusEl.textContent = text; }
-
-  // Orientation & fullscreen helpers (kept minimal)
-  function isMobileOrTouchSmall() {
+  async function requestAndEmbed(){
+    setStatus('Requesting join link…');
     try {
-      const hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
-      const smallWidth = window.innerWidth <= 900;
-      return hasTouch && smallWidth;
-    } catch (e) { return false; }
-  }
-  let isForcingLandscapeViaCSS = false;
-  function applyCssLandscapeFallback(){
-    if (!isMobileOrTouchSmall()) return;
-    if (isForcingLandscapeViaCSS) return;
-    const jaas = document.getElementById('jaas');
-    if (!jaas) return;
-    document.body.style.overflow = 'hidden';
-    jaas.classList.add('force-landscape');
-    isForcingLandscapeViaCSS = true;
-  }
-  function removeCssLandscapeFallback(){
-    if (!isForcingLandscapeViaCSS) return;
-    const jaas = document.getElementById('jaas');
-    if (!jaas) return;
-    jaas.classList.remove('force-landscape');
-    document.body.style.overflow = '';
-    isForcingLandscapeViaCSS = false;
-  }
-
-  async function tryLockOrientation(orientation) {
-    if (!orientation) return Promise.reject('No orientation API');
-    if (screen.orientation && typeof screen.orientation.lock === 'function') {
-      return screen.orientation.lock(orientation);
-    }
-    const maybeLock = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation;
-    if (typeof maybeLock === 'function') {
-      try {
-        const ok = maybeLock.call(screen, orientation);
-        return (ok && typeof ok.then === 'function') ? ok : Promise.resolve(ok);
-      } catch (e) { return Promise.reject(e); }
-    }
-    return Promise.reject('Orientation lock not supported');
-  }
-  async function tryUnlockOrientation(){
-    try {
-      if (screen.orientation && typeof screen.orientation.unlock === 'function') {
-        screen.orientation.unlock();
-      } else if (screen.unlockOrientation) {
-        screen.unlockOrientation();
-      } else if (screen.mozUnlockOrientation) {
-        screen.mozUnlockOrientation();
-      } else if (screen.msUnlockOrientation) {
-        screen.msUnlockOrientation();
-      }
-    } catch(e){ /* ignore */ }
-  }
-
-  async function enterFullscreenAndLandscape(){
-    const el = document.getElementById('jaas');
-    if (!el) return;
-    try {
-      if (el.requestFullscreen) await el.requestFullscreen();
-      else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
-      else if (el.msRequestFullscreen) await el.msRequestFullscreen();
-    } catch(e){}
-    try {
-      await tryLockOrientation('landscape');
-      removeCssLandscapeFallback();
-    } catch (err) {
-      applyCssLandscapeFallback();
-    }
-  }
-  async function exitFullscreenAndRestore(){
-    try {
-      if (document.exitFullscreen) await document.exitFullscreen();
-      else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
-      else if (document.msExitFullscreen) await document.msExitFullscreen();
-    } catch(e){}
-    tryUnlockOrientation();
-    removeCssLandscapeFallback();
-  }
-  function toggleFullscreen(){
-    if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
-      enterFullscreenAndLandscape();
-    } else {
-      exitFullscreenAndRestore();
-    }
-  }
-  document.addEventListener('fullscreenchange', ()=>{ if (!document.fullscreenElement) { tryUnlockOrientation(); removeCssLandscapeFallback(); }});
-  document.addEventListener('webkitfullscreenchange', ()=>{ if (!document.webkitFullscreenElement) { tryUnlockOrientation(); removeCssLandscapeFallback(); }});
-  document.addEventListener('msfullscreenchange', ()=>{ if (!document.msFullscreenElement) { tryUnlockOrientation(); removeCssLandscapeFallback(); }});
-
-  // ===== Core: request join and embed server-side join page (do NOT expose provider room) =====
-  async function requestAndEmbed() {
-    setStatus('Requesting secure join URL…');
-    try {
-      const resp = await fetch(`${SERVICE_BASE.replace(/\/$/,'')}/api/request-join`, FETCH_OPTS);
-      if (!resp.ok) {
-        const err = await resp.text().catch(()=>null);
-        console.error('request-join failed', resp.status, err);
-        setStatus('Unable to get join link (server rejected).');
-        return;
-      }
+      const resp = await fetch(`${SERVICE_BASE}/api/request-join`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({room:ROOM})
+      });
+      if(!resp.ok){ setStatus('Server rejected'); return; }
       const data = await resp.json();
-      if (!data) {
-        setStatus('Failed to get join link.');
-        return;
-      }
-
-      // Prefer server-provided absolute URL (fullJoinUrl). Fallback to joinUrl resolved against SERVICE_BASE.
-      let joinHref = null;
-      if (data.fullJoinUrl && typeof data.fullJoinUrl === 'string' && data.fullJoinUrl.startsWith('http')) {
-        joinHref = data.fullJoinUrl;
-      } else if (data.joinUrl && typeof data.joinUrl === 'string') {
-        joinHref = data.joinUrl.startsWith('http') ? data.joinUrl : `${SERVICE_BASE.replace(/\/$/,'')}${data.joinUrl}`;
-      } else {
-        console.error('unexpected response', data);
-        setStatus('Failed to get join link.');
-        return;
-      }
-
-      // IMPORTANT: joinHref must point to your server's /join/:jti (NOT the provider origin).
-      // The server should serve an HTML that embeds ONLY a server-side proxy path (e.g. /proxy/:jti/)
-      // so the provider room never appears in client network logs or page source.
+      if(!data?.joinUrl){ setStatus('Failed to get join link'); return; }
 
       setStatus('Embedding meeting…');
-
       const iframe = document.createElement('iframe');
-      iframe.id = 'meetFrame';
-      iframe.src = joinHref;
+      iframe.id='meetFrame';
+      iframe.src = `${SERVICE_BASE}/join/${data.joinUrl.split('/').pop()}`; // /join/:jti
+      iframe.allow='camera; microphone; fullscreen; clipboard-write';
+      iframe.sandbox='allow-scripts allow-same-origin allow-forms allow-popups';
 
-      // Hide referrer to reduce leakage if any absolute provider URL is requested later:
-      iframe.referrerPolicy = 'no-referrer';
-
-      // Allow camera/mic + fullscreen. DO NOT sandbox outer iframe if you need camera/mic for nested provider UI.
-      iframe.allow = 'camera; microphone; fullscreen; autoplay; clipboard-write';
-      iframe.allowFullscreen = true;
-
-      // insert iframe into container
       const jaas = document.getElementById('jaas');
-      jaas.innerHTML = '';
+      jaas.innerHTML='';
       jaas.appendChild(iframe);
 
-      // show controls
-      if (viewerControls) viewerControls.style.display = 'flex';
-      setStatus('Joined — enjoying the meeting');
-      setTimeout(()=> setStatus(''), 4000);
+      if(viewerControls) viewerControls.style.display='flex';
+      setStatus('Joined');
 
-      // We intentionally DO NOT auto-blank the iframe.
-
-    } catch (err) {
-      console.error('requestAndEmbed error', err);
-      setStatus('Network error — retrying in 3s…');
-      setTimeout(()=> requestAndEmbed(), 3000);
-    }
+    } catch(e){ console.error(e); setStatus('Network error'); }
   }
 
-  // ===== Boot =====
-  window.addEventListener('load', ()=> {
-    const fsBtn = document.getElementById('btnFullscreen');
-    if (fsBtn) fsBtn.addEventListener('click', toggleFullscreen);
-    requestAndEmbed();
+  // fullscreen button
+  document.getElementById('btnFullscreen').addEventListener('click', ()=>{
+    const el = document.getElementById('jaas');
+    if(el.requestFullscreen) el.requestFullscreen();
+    else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
   });
 
+  window.addEventListener('load', requestAndEmbed);
 })();
 </script>
 </body>
