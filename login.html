@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Login – enter Order-ID</title>
+<style>
+  body{display:flex;align-items:center;justify-content:center;height:100vh;background:#fafafa;margin:0;font-family:sans-serif}
+  .box{background:#fff;padding:40px 32px;border-radius:12px;box-shadow:0 8px 25px rgba(0,0,0,.1);width:320px;text-align:center}
+  input{width:100%;padding:12px 14px;font-size:16px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box}
+  button{margin-top:18px;width:100%;padding:12px;font-size:16px;border:none;border-radius:8px;background:#007aff;color:#fff;cursor:pointer}
+  .err{color:#d00;margin-top:14px;font-size:14px;display:none}
+</style>
+</head>
+<body>
+  <div class="box">
+    <h2 style="margin-top:0">Enter your Order-ID</h2>
+    <input id="order" placeholder="OORXXXX…" autocomplete="off"/>
+    <button id="btnLogin">Enter</button>
+    <div class="err" id="errText"></div>
+  </div>
+
+<!-- Firebase v8 (small, works fine for RTDB) -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey:"AIzaSyA02dPt8yMTSmhzyj9PIrm4UlWr1a1waD4",
+  authDomain:"testing-6de54.firebaseapp.com",
+  databaseURL:"https://testing-6de54-default-rtdb.firebaseio.com",
+  projectId:"testing-6de54",
+  storageBucket:"testing-6de54.appspot.com",
+  messagingSenderId:"159795986690",
+  appId:"1:159795986690:web:2e4de44d725826dc01821b",
+  measurementId:"G-47XZRFJJGB"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const $ = id => document.getElementById(id);
+const btn = $("btnLogin");
+const input = $("order");
+const errBox = $("errText");
+
+function showErr(msg){
+  errBox.textContent = msg;
+  errBox.style.display = 'block';
+}
+
+btn.addEventListener('click', async () => {
+  errBox.style.display='none';
+  const raw = (input.value||'').trim().toUpperCase();
+  if(!raw){showErr("Please enter an Order-ID");return;}
+  try{
+    const snap = await db.ref('transactions/'+raw).get();
+    if(!snap.exists()){showErr("Invalid Order-ID");return;}
+    const tx = snap.val();
+    if(tx.hidden){showErr("Order has been hidden / revoked");return;}
+    // parse dates
+    const now = new Date();
+    const st  = new Date(tx.start_time);
+    const et  = new Date(tx.end_time);
+    if(now < st){showErr("Order is not active yet");return;}
+    if(now > et){showErr("Order expired");return;}
+    // success!
+    localStorage.setItem('orderId', raw);
+    window.location.href = "/";     // go to home
+  }catch(e){
+    console.error(e);
+    showErr("Network or server error. Try again.");
+  }
+});
+
+// allow Enter key
+input.addEventListener('keyup', e=>{ if(e.key==='Enter') btn.click(); });
+</script>
+</body>
+</html>
