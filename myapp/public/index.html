@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Home – Rounded Embed</title>
+<style>
+ body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#f0f0f0;margin:0;font-family:Arial,sans-serif}
+ .video-container{width:560px;max-width:90%;aspect-ratio:16/9;border-radius:20px;overflow:hidden;box-shadow:0 8px 20px rgba(0,0,0,.3)}
+ iframe{width:100%;height:100%;border:0}
+ .topbar{position:fixed;top:10px;right:14px}
+ .topbar button{padding:8px 12px;font-size:14px;border:none;border-radius:8px;background:#d33;color:#fff;cursor:pointer}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button id="btnLogout">Logout</button>
+</div>
+
+<div class="video-container">
+  <iframe id="meetFrame" allowfullscreen></iframe>
+</div>
+
+<script>
+// 1) fetch session info
+fetch('/session')
+ .then(r=> r.ok ? r.json() : Promise.reject())
+ .then(({orderId})=>{
+    document.getElementById('meetFrame').src = '/viewer.html?user='+
+                                               encodeURIComponent(orderId);
+ })
+ .catch(()=> location.href='/login');
+
+// 2) logout
+document.getElementById('btnLogout').onclick = ()=>{
+  fetch('/logout',{method:'POST'}).then(()=> location.href='/login');
+};
+</script>
+</body>
+</html>
