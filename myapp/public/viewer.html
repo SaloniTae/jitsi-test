@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Viewer</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script src="https://8x8.vc/vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/external_api.js"></script>
+<style>
+ :root{--bg:#000;--text:#e6f0f3}
+ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);overflow:hidden;font-family:system-ui,Arial,sans-serif}
+ #jaas{height:100vh;width:100vw;background:var(--bg);position:relative;overflow:hidden}
+ .viewer-controls{position:absolute;right:12px;top:12px;z-index:9999;display:none;gap:8px}
+ .viewer-controls button{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.06);padding:8px 10px;color:var(--text);border-radius:6px;cursor:pointer;font-size:13px}
+ .force-landscape{position:fixed!important;top:50%!important;left:50%!important;width:100vh!important;height:100vw!important;transform:translate(-50%,-50%) rotate(90deg)!important;transform-origin:center center!important;background:var(--bg)!important;z-index:99999!important}
+ #unauth{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000;color:#e33;font-size:22px;font-weight:600}
+</style>
+</head>
+<body>
+<div id="jaas">
+  <div class="viewer-controls" id="viewerControls"><button id="btnFullscreen">Fullscreen</button></div>
+  <div id="unauth" style="display:none">Unauthorized</div>
+</div>
+
+<script>
+(function(){
+  /* === read ?user=  ==== */
+  const qs=new URLSearchParams(location.search);
+  const DISPLAY_NAME = qs.get('user') || '';
+  if(!DISPLAY_NAME){
+     document.getElementById('unauth').style.display='flex';
+     return;                       // stop everything
+  }
+
+  const ROOM  ="vpaas-magic-cookie-45b14c029c1e43698634a0ad0d0838a9/AyushLive";
+  const DOMAIN="8x8.vc";
+  const ROOM_PASS="12345";
+
+  let api=null,isCSS=false;
+
+  function ensureHide(a){setTimeout(()=>{try{a.executeCommand('toggleFilmStrip');}catch(e){}},300);}
+  function mob(){return ('ontouchstart'in window)||(navigator.maxTouchPoints>0)&&window.innerWidth<=900;}
+
+  function init(){
+    if(api) return;
+    api=new JitsiMeetExternalAPI(DOMAIN,{
+      roomName:ROOM,parentNode:document.getElementById('jaas'),
+      userInfo:{displayName:DISPLAY_NAME},
+      configOverwrite:{prejoinPageEnabled:false,prejoinConfig:{enabled:false},disableInitialGUM:true,startWithAudioMuted:true,startWithVideoMuted:true,filmstrip:{disabled:true}},
+      interfaceConfigOverwrite:{TOOLBAR_BUTTONS:[],SHOW_JITSI_WATERMARK:false,SHOW_BRAND_WATERMARK:false,SHOW_POWERED_BY:false,SHOW_DEEP_LINKING_IMAGE:false,SHOW_WATERMARK_FOR_GUESTS:false,VIDEO_LAYOUT_FIT:'both',SHOW_PARTICIPANT_NAME:false,DISABLE_VIDEO_BACKGROUND:true},
+      width:'100%',height:'100%'
+    });
+
+    api.on('participantRoleChanged',e=>{if(e.role==='moderator') api.executeCommand('password',ROOM_PASS);});
+    api.on('passwordRequired',()=>api.executeCommand('password',ROOM_PASS));
+
+    api.on('videoConferenceJoined',async()=>{
+      document.getElementById('viewerControls').style.display='flex';
+      ensureHide(api);
+    });
+    api.on('videoConferenceLeft',()=> document.getElementById('viewerControls').style.display='none');
+  }
+
+  /* fullscreen helpers (unchanged, shortened) */
+  function lock(){try{screen.orientation.lock('landscape');}catch(e){rotateCSS();}}
+  function rotateCSS(){if(isCSS||!mob())return;document.getElementById('jaas').classList.add('force-landscape');isCSS=true;}
+  async function enterFS(){
+    const el=document.getElementById('jaas');
+    if(el.requestFullscreen)await el.requestFullscreen();
+    lock();
+  }
+  async function exitFS(){
+    if(document.exitFullscreen) await document.exitFullscreen();
+    if(screen.orientation&&screen.orientation.unlock)screen.orientation.unlock();
+    if(isCSS){document.getElementById('jaas').classList.remove('force-landscape');isCSS=false;}
+  }
+  function toggleFS(){ (document.fullscreenElement)?exitFS():enterFS(); }
+
+  /* boot */
+  window.addEventListener('load',()=>{init();document.getElementById('btnFullscreen').onclick=toggleFS;});
+})();
+</script>
+</body>
+</html>
