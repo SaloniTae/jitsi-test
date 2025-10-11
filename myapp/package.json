@@ -1,0 +1,15 @@
+{
+  "name": "oor-viewer-app",
+  "version": "1.0.0",
+  "type": "module",              // ← lets us use “import … from …”
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"    // Render runs this automatically
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cookie-parser": "^1.4.6",
+    "uuid": "^9.0.0",
+    "firebase-admin": "^11.10.1"
+  }
+}
