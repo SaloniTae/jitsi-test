@@ -1,10 +1,10 @@
 {
   "name": "oor-viewer-app",
   "version": "1.0.0",
-  "type": "module",              // ← lets us use “import … from …”
+  "type": "module",             
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"    // Render runs this automatically
+    "start": "node server.js"   
   },
   "dependencies": {
     "express": "^4.19.2",
