@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Login – Order-ID</title>
+<style>
+ body{display:flex;justify-content:center;align-items:center;height:100vh;background:#fafafa;margin:0;font-family:sans-serif}
+ .box{background:#fff;padding:40px 32px;border-radius:12px;box-shadow:0 8px 25px rgba(0,0,0,.1);width:320px;text-align:center}
+ input{width:100%;padding:12px 14px;font-size:16px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box}
+ button{margin-top:18px;width:100%;padding:12px;font-size:16px;border:none;border-radius:8px;background:#007aff;color:#fff;cursor:pointer}
+ .err{color:#d00;margin-top:14px;font-size:14px;display:none}
+</style>
+</head>
+<body>
+  <div class="box">
+    <h2 style="margin-top:0">Enter your Order-ID</h2>
+    <input id="order" placeholder="OORXXXX…" autocomplete="off" />
+    <button id="btnLogin">Enter</button>
+    <div class="err" id="errBox"></div>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+function showErr(msg){
+  const e=$('errBox'); e.textContent=msg; e.style.display='block';
+}
+
+function doLogin(){
+  const orderId = $('order').value.trim().toUpperCase();
+  if(!orderId) { showErr('Please enter an Order-ID'); return; }
+
+  fetch('/login',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({orderId})
+  }).then(r=>{
+    if(r.ok) location.href='/';
+    else showErr('Invalid or expired Order-ID');
+  }).catch(()=> showErr('Network error'));
+}
+
+$('btnLogin').onclick = doLogin;
+$('order').addEventListener('keyup', e=>{ if(e.key==='Enter') doLogin(); });
+</script>
+</body>
+</html>
