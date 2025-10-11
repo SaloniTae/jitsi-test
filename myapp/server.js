@@ -18,7 +18,7 @@ admin.initializeApp({
 /////////////////////////////////////////////////////////////////
 const app       = express();
 const PORT      = process.env.PORT || 3000;
-const COOKIE_KEY = 'change-me-secret';      // <-- sign cookies with this
+const COOKIE_KEY = 'OOR';      // <-- sign cookies with this
 const SESSION_DAYS = 30;                    // stay logged-in for 30 days
 const SESSION_MS   = SESSION_DAYS * 24 * 60 * 60 * 1e3;
 const SESSIONS = new Map();                 // sid -> {orderId, exp}
