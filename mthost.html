@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>MiroTalk — Host (screen share)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  body { margin:0; font-family: Inter, system-ui, Arial; background:#0b0b0b; color:#fff; display:flex; flex-direction:column; height:100vh; }
+  header { padding:16px; background:#111; display:flex; gap:12px; align-items:center; }
+  main { flex:1; display:flex; gap:12px; padding:12px; }
+  #controls { width:320px; background:#0f1720; padding:12px; border-radius:8px; }
+  #frameWrap { flex:1; background:#000; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  iframe { width:100%; height:100%; border:0; }
+  input, button { width:100%; padding:10px; font-size:14px; margin-top:8px; border-radius:6px; border:none; }
+  button.primary { background:#06b6d4; color:#032; font-weight:600; cursor:pointer; }
+  small.note { color:#9aa3b2; }
+</style>
+</head>
+<body>
+  <header>
+    <h3 style="margin:0">MiroTalk — Host</h3>
+    <div style="margin-left:auto"><small class="note">Host page — visible controls for presenter</small></div>
+  </header>
+
+  <main>
+    <aside id="controls">
+      <label>Room name:
+        <input id="roomName" value="Tutu" />
+      </label>
+
+      <label>Use SFU host domain:
+        <input id="baseUrl" value="https://sfu.mirotalk.com" />
+      </label>
+
+      <button id="openRoomBtn" class="primary">Open Room (in iframe)</button>
+      <button id="popupBtn">Open Room in Popup (recommended for host)</button>
+
+      <hr style="margin:12px 0; border-color:#222" />
+
+      <small class="note">
+        Notes:
+        <ul>
+          <li>Use the MiroTalk UI in the framed room to start Screen Share (Display Capture) with audio.</li>
+          <li>For highest quality, pick Fullscreen on the host when sharing, and use Chrome/Edge.</li>
+          <li>If your instance has embed/no-ui params, you can add them to the URL template below.</li>
+        </ul>
+      </small>
+    </aside>
+
+    <div id="frameWrap">
+      <div style="width:95%; height:90%; max-width:1400px; max-height:900px; border-radius:6px; overflow:hidden; background:#000" id="frameContainer">
+        <!-- iframe will be created here -->
+        <div id="placeholder" style="color:#8b98a6; padding:20px; text-align:center">
+          Click "Open Room (in iframe)" to create/join the room inside this page.
+        </div>
+      </div>
+    </div>
+  </main>
+
+<script>
+  // Host page logic: embed the MiroTalk room for the presenter to use.
+  // Replace baseUrl with your MiroTalk SFU host if self-hosted.
+  const openRoomBtn = document.getElementById('openRoomBtn');
+  const popupBtn = document.getElementById('popupBtn');
+  const frameContainer = document.getElementById('frameContainer');
+  const placeholder = document.getElementById('placeholder');
+
+  function buildRoomUrl(base, roomName, extraParams = '') {
+    // Base template; MiroTalk demo uses /newroom or /room/<room-id> depending on instance
+    // We'll use the "newroom" route with a room name query param to ensure same room across joins
+    // If your instance needs different path, change here.
+    return `${base.replace(/\/$/, '')}/newroom?room=${encodeURIComponent(roomName)}${extraParams ? '&' + extraParams : ''}`;
+  }
+
+  openRoomBtn.addEventListener('click', () => {
+    const base = document.getElementById('baseUrl').value.trim();
+    const room = document.getElementById('roomName').value.trim() || 'Tutu';
+    const url = buildRoomUrl(base, room);
+    // create or reuse iframe
+    frameContainer.innerHTML = '';
+    const ifr = document.createElement('iframe');
+    ifr.src = url;
+    ifr.allow = "camera; microphone; display-capture; fullscreen; autoplay; encrypted-media";
+    frameContainer.appendChild(ifr);
+  });
+
+  popupBtn.addEventListener('click', () => {
+    const base = document.getElementById('baseUrl').value.trim();
+    const room = document.getElementById('roomName').value.trim() || 'Tutu';
+    const url = buildRoomUrl(base, room);
+    // open in a new popup so the host can use browser-level screen-share UI comfortably
+    window.open(url, 'miro_host_popup', 'width=1200,height=800');
+  });
+</script>
+</body>
+</html>
