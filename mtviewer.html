@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>MiroTalk — Viewer (screen-only)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  html,body { height:100%; margin:0; background:#000; overflow:hidden; }
+  #overlayMsg { position:absolute; z-index:30; color:#fff; background:rgba(0,0,0,0.45); padding:8px 12px; border-radius:8px; top:12px; left:12px; font-family:Inter,Arial; }
+  #frameWrap { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#000; }
+  /* iframe fills viewport and object-fits like a video player */
+  iframe#miroIframe { width:100vw; height:100vh; border:0; transform-origin:center center; display:block; }
+  /* fullscreen rotation helper class */
+  .landscape { transform: rotate(90deg) scale(1.7777); }
+  /* hide pointer optionally for kiosk */
+  .hide-cursor { cursor:none; }
+</style>
+</head>
+<body>
+  <div id="overlayMsg">Connecting… (tap to enable audio & fullscreen)</div>
+  <div id="frameWrap" class="hide-cursor">
+    <!-- iframe will be created dynamically -->
+  </div>
+
+<!-- minimal host/viewer container -->
+<div id="miro-container" style="width:100vw;height:100vh;background:#000"></div>
+
+<script>
+(async function(){
+  const MIRO_BASE = 'https://sfu.mirotalk.com'; // <-- change to your MiroTalk host (no trailing slash)
+  const WIDGET_SRC = MIRO_BASE + '/widget.js';
+
+  // load script dynamically with timeout
+  function loadScript(src, timeout=10000) {
+    return new Promise((resolve, reject) => {
+      // if already present, resolve quickly
+      for(const s of document.scripts) if(s.src === src) return resolve();
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = (e) => reject(new Error('Script failed to load: ' + src));
+      document.head.appendChild(script);
+      // timeout
+      setTimeout(()=> reject(new Error('Loading widget script timed out: ' + src)), timeout);
+    });
+  }
+
+  // helper to wait for global to be ready
+  function waitForGlobal(name, timeout=8000) {
+    return new Promise((resolve, reject) => {
+      const start = Date.now();
+      (function poll(){
+        if(window[name]) return resolve(window[name]);
+        if(Date.now() - start > timeout) return reject(new Error(name + ' not defined after timeout'));
+        setTimeout(poll, 100);
+      })();
+    });
+  }
+
+  try {
+    await loadScript(WIDGET_SRC);
+  } catch(err) {
+    console.error(err);
+    alert('Failed to load MiroTalk widget script. Check console and network tab.');
+    return;
+  }
+
+  let Widget;
+  try {
+    Widget = await waitForGlobal('MiroTalkWidget', 8000);
+  } catch(err) {
+    console.error('MiroTalkWidget global not defined after loading script. Possible CSP/mixed-content/adblock issue.', err);
+    alert('MiroTalkWidget not available. Check browser console for CSP or network errors.');
+    return;
+  }
+
+  // Example: initialize different modes
+  // Replace options per your instance docs.
+  const MODE = 'viewer'; // change 'host' or 'viewer'
+  const ROOM_NAME = 'Tutu';
+
+  // Create container element reference
+  const container = document.getElementById('miro-container');
+
+  // Common options: customize per your MiroTalk version
+  const commonOpts = {
+    room: ROOM_NAME,
+    // UI hints — not all instances support these; if self-hosted you can enable embed mode server-side
+    embed: true,
+    hideControls: true,
+    // low-latency / quality hints if supported by your widget impl:
+    preferScreenQuality: true,
+    videoConstraints: { width: 1920, height: 1080, frameRate: 30 }
+  };
+
+  if (MODE === 'host') {
+    // host: show full buttons and allow screen share
+    const hostOpts = Object.assign({}, commonOpts, {
+      role: 'host',
+      hideControls: false,
+      allowScreenshare: true
+    });
+    // API may differ; check your widget version for init API
+    const w = new Widget(hostOpts);
+    // attach to DOM
+    container.appendChild(w.getElement ? w.getElement() : w.el || w.container);
+    // start widget - API name may differ: `mount` / `join` etc — try common ones:
+    if (typeof w.mount === 'function') await w.mount();
+    else if (typeof w.join === 'function') await w.join();
+    else console.log('Widget instance created', w);
+  } else {
+    // viewer: minimal UI, only show screenshare
+    const viewerOpts = Object.assign({}, commonOpts, {
+      role: 'viewer',
+      hideControls: true,
+      compactMode: true, // some widget versions support compact/embed
+    });
+    const w = new Widget(viewerOpts);
+    container.appendChild(w.getElement ? w.getElement() : w.el || w.container);
+
+    // try to attach, then request best quality if API present
+    if (typeof w.mount === 'function') await w.mount();
+    else if (typeof w.join === 'function') await w.join();
+
+    // attempt to ask widget for high-quality receive (if supported)
+    if (typeof w.setReceiveSettings === 'function') {
+      try {
+        w.setReceiveSettings({ screenVideo: { width: 1920, height: 1080, frameRate: 30 }});
+      } catch(e) { console.warn('setReceiveSettings failed', e); }
+    }
+  }
+
+  console.log('MiroTalk widget initialized.');
+})();
+</script>
+</body>
+</html>
